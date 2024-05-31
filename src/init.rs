@@ -82,3 +82,30 @@ pub fn command_pool_info(family_queue: u32) -> vk::CommandPoolCreateInfo<'static
         .queue_family_index(family_queue)
 }
 
+pub fn descriptor_pool_size(
+    descriptor_type: vk::DescriptorType,
+    amount: u32,
+) -> vk::DescriptorPoolSize {
+    vk::DescriptorPoolSize::default()
+        .descriptor_count(amount)
+        .ty(descriptor_type)
+}
+
+pub fn descriptor_set_layout_binding(
+    binding: u32,
+    descriptor_type: vk::DescriptorType,
+    count: u32,
+    shader_flag: vk::ShaderStageFlags,
+) -> vk::DescriptorSetLayoutBinding<'static> {
+    vk::DescriptorSetLayoutBinding::default()
+        .binding(0)
+        .descriptor_type(descriptor_type)
+        .descriptor_count(count)
+        .stage_flags(shader_flag)
+}
+
+pub fn descriptor_set_layout_info(bindings: Vec<vk::DescriptorSetLayoutBinding>) {
+    vk::DescriptorBindingFlags::vk::DescriptorSetLayoutCreateInfo::default()
+        .bindings(&bindings)
+        .flags(vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL);
+}

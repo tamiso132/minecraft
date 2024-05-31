@@ -2,6 +2,7 @@ use std::{
     borrow::Cow,
     ffi::{self, CStr, CString},
     ptr::null,
+    sync::Arc,
 };
 
 use ash::{
@@ -15,6 +16,7 @@ use winit::raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 
 use crate::init;
 // everything that is not a builder, will be moved later from here
+
 pub struct TKQueue {
     queue: vk::Queue,
     family: u32,
@@ -26,6 +28,14 @@ impl Default for TKQueue {
             queue: Default::default(),
             family: Default::default(),
         }
+    }
+}
+impl TKQueue {
+    pub fn get_family(&self) -> u32 {
+        self.family
+    }
+    pub fn get_queue(&self) -> vk::Queue {
+        self.queue
     }
 }
 
@@ -191,6 +201,7 @@ struct DeviceHelper {}
 
 pub struct DeviceBuilder<'a> {
     features: vk::PhysicalDeviceFeatures,
+    features_12: vk::PhysicalDeviceVulkan12Features<'a>,
     features_13: vk::PhysicalDeviceVulkan13Features<'a>,
     extensions: Vec<CString>,
     physical: vk::PhysicalDevice,
@@ -203,6 +214,7 @@ pub struct DeviceBuilder<'a> {
 impl<'a> DeviceBuilder<'a> {
     pub fn new(instance: ash::Instance) -> Self {
         let features = vk::PhysicalDeviceFeatures::default();
+        let features_12 = vk::PhysicalDeviceVulkan12Features::default();
         let features_13 = vk::PhysicalDeviceVulkan13Features::default();
         let extensions = vec![CString::new("VK_KHR_swapchain").unwrap()];
         let physical = vk::PhysicalDevice::null();
@@ -219,6 +231,7 @@ impl<'a> DeviceBuilder<'a> {
 
         Self {
             features,
+            features_12,
             features_13,
             extensions,
             physical,
@@ -256,6 +269,20 @@ impl<'a> DeviceBuilder<'a> {
                 panic!("None of the Vulkan supported gpus have the required queues");
             }
         }
+
+        self
+    }
+
+    pub fn ext_bindless_descriptors(mut self) -> Self {
+        self.features_12 = self
+            .features_12
+            .descriptor_binding_sampled_image_update_after_bind(true)
+            .shader_sampled_image_array_non_uniform_indexing(true)
+            .shader_storage_buffer_array_non_uniform_indexing(true)
+            .shader_uniform_buffer_array_non_uniform_indexing(true)
+            .descriptor_binding_sampled_image_update_after_bind(true)
+            .descriptor_binding_storage_buffer_update_after_bind(true)
+            .buffer_device_address(true);
 
         self
     }
