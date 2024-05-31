@@ -1,11 +1,11 @@
 use ash::vk::{self, ImageTiling, MemoryPropertyFlags};
 use vk_mem::AllocationCreateFlags;
 
-pub fn image_subresource_info() -> vk::ImageSubresourceRange {
+pub fn image_subresource_info(aspect: vk::ImageAspectFlags) -> vk::ImageSubresourceRange {
     vk::ImageSubresourceRange::default()
-        .aspect_mask(vk::ImageAspectFlags::COLOR)
+        .aspect_mask(aspect)
         .base_mip_level(0)
-        .level_count(0)
+        .level_count(1)
         .base_array_layer(0)
         .layer_count(1)
 }
@@ -26,8 +26,6 @@ pub fn image_info(
     format: vk::Format,
     image_usage: vk::ImageUsageFlags,
 ) -> (vk::ImageCreateInfo<'static>, vk_mem::AllocationCreateInfo) {
-    let size_allocate = pixel_size * extent.height * extent.width;
-
     let alloc_info = vk_mem::AllocationCreateInfo {
         flags: AllocationCreateFlags::empty(),
         usage: vk_mem::MemoryUsage::Unknown,
@@ -52,6 +50,35 @@ pub fn image_info(
     (image_info, alloc_info)
 }
 
-pub fn image_view_info(image:vk::Image){
-
+pub fn image_view_info(
+    image: vk::Image,
+    format: vk::Format,
+    aspect: vk::ImageAspectFlags,
+) -> vk::ImageViewCreateInfo<'static> {
+    vk::ImageViewCreateInfo::default()
+        .format(format)
+        .view_type(vk::ImageViewType::TYPE_2D)
+        .subresource_range(image_subresource_info(aspect))
+        .image(image)
 }
+
+pub fn device_queue_info(family_index: u32) -> vk::DeviceQueueInfo2<'static> {
+    vk::DeviceQueueInfo2::default()
+        .queue_family_index(family_index)
+        .queue_index(0)
+}
+
+pub fn device_create_into(family_index: u32) -> vk::DeviceQueueCreateInfo<'static> {
+    let mut device_queue_info =
+        vk::DeviceQueueCreateInfo::default().queue_family_index(family_index);
+
+    device_queue_info.queue_count = 1;
+    device_queue_info
+}
+
+pub fn command_pool_info(family_queue: u32) -> vk::CommandPoolCreateInfo<'static> {
+    vk::CommandPoolCreateInfo::default()
+        .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
+        .queue_family_index(family_queue)
+}
+
