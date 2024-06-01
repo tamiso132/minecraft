@@ -1,3 +1,5 @@
+use std::ffi::CString;
+
 use ash::vk::{self, ImageTiling, MemoryPropertyFlags};
 use vk_mem::AllocationCreateFlags;
 
@@ -98,14 +100,23 @@ pub fn descriptor_set_layout_binding(
     shader_flag: vk::ShaderStageFlags,
 ) -> vk::DescriptorSetLayoutBinding<'static> {
     vk::DescriptorSetLayoutBinding::default()
-        .binding(0)
+        .binding(binding)
         .descriptor_type(descriptor_type)
         .descriptor_count(count)
         .stage_flags(shader_flag)
 }
 
-pub fn descriptor_set_layout_info(bindings: Vec<vk::DescriptorSetLayoutBinding>) {
-    vk::DescriptorBindingFlags::vk::DescriptorSetLayoutCreateInfo::default()
-        .bindings(&bindings)
-        .flags(vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL);
+pub fn shader_create_info(shader_stage: vk::ShaderStageFlags) -> vk::ShaderCreateInfoEXT<'static> {
+    let next_stage = if shader_stage == vk::ShaderStageFlags::FRAGMENT {
+        vk::ShaderStageFlags::empty()
+    } else {
+        vk::ShaderStageFlags::FRAGMENT
+    };
+
+    vk::ShaderCreateInfoEXT::default()
+        .flags(vk::ShaderCreateFlagsEXT::LINK_STAGE)
+        .stage(shader_stage)
+        .code_type(vk::ShaderCodeTypeEXT::SPIRV)
+        .stage(shader_stage)
+        .next_stage(next_stage)
 }

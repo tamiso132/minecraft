@@ -55,6 +55,11 @@ impl Default for AllocatedImage {
     }
 }
 
+pub struct ExtLoader {
+    pub set_debug_util_object_name_ext: vk::PFN_vkSetDebugUtilsObjectNameEXT,
+    pub create_shader_ext: vk::PFN_vkCreateShadersEXT,
+}
+
 pub struct VulkanContext {
     pub entry: ash::Entry,
     pub instance: ash::Instance,
@@ -82,7 +87,7 @@ pub struct VulkanContext {
     pub surface_loader: ash::khr::surface::Instance,
     pub debug_loader: Option<ash::ext::debug_utils::Instance>,
 
-    pub set_debug_util_object_name_ext: vk::PFN_vkSetDebugUtilsObjectNameEXT,
+    pub extension_loader: ExtLoader,
 }
 
 impl VulkanContext {
@@ -118,6 +123,15 @@ impl VulkanContext {
                         .unwrap(),
                 );
 
+            let create_shader_ext: vk::PFN_vkCreateShadersEXT = std::mem::transmute(
+                instance
+                    .get_device_proc_addr(
+                        device.handle(),
+                        CString::new("vkCreateShadersEXT").unwrap().as_ptr(),
+                    )
+                    .unwrap(),
+            );
+
             Self {
                 entry,
                 instance,
@@ -143,7 +157,10 @@ impl VulkanContext {
                 debug_messenger: Default::default(),
                 debug_loader: None,
 
-                set_debug_util_object_name_ext,
+                extension_loader: ExtLoader {
+                    set_debug_util_object_name_ext,
+                    create_shader_ext,
+                },
             }
         }
     }
@@ -201,11 +218,15 @@ struct DeviceHelper {}
 
 pub struct DeviceBuilder<'a> {
     features: vk::PhysicalDeviceFeatures,
+    features_11: vk::PhysicalDeviceVulkan11Features<'a>,
     features_12: vk::PhysicalDeviceVulkan12Features<'a>,
     features_13: vk::PhysicalDeviceVulkan13Features<'a>,
     extensions: Vec<CString>,
     physical: vk::PhysicalDevice,
     instance: ash::Instance,
+
+    descriptor_ext: Option<vk::PhysicalDeviceDescriptorIndexingFeaturesEXT<'a>>,
+    shader_object_ext: Option<vk::PhysicalDeviceShaderObjectFeaturesEXT<'a>>,
 
     transfer_queue: TKQueue,
     graphic_queue: TKQueue,
@@ -214,8 +235,10 @@ pub struct DeviceBuilder<'a> {
 impl<'a> DeviceBuilder<'a> {
     pub fn new(instance: ash::Instance) -> Self {
         let features = vk::PhysicalDeviceFeatures::default();
+        let features_11 = vk::PhysicalDeviceVulkan11Features::default();
         let features_12 = vk::PhysicalDeviceVulkan12Features::default();
         let features_13 = vk::PhysicalDeviceVulkan13Features::default();
+
         let extensions = vec![CString::new("VK_KHR_swapchain").unwrap()];
         let physical = vk::PhysicalDevice::null();
 
@@ -230,7 +253,10 @@ impl<'a> DeviceBuilder<'a> {
         };
 
         Self {
+            descriptor_ext: None,
+            shader_object_ext: None,
             features,
+            features_11,
             features_12,
             features_13,
             extensions,
@@ -273,16 +299,23 @@ impl<'a> DeviceBuilder<'a> {
         self
     }
 
+    #[rustfmt::skip]
     pub fn ext_bindless_descriptors(mut self) -> Self {
-        self.features_12 = self
-            .features_12
-            .descriptor_binding_sampled_image_update_after_bind(true)
-            .shader_sampled_image_array_non_uniform_indexing(true)
-            .shader_storage_buffer_array_non_uniform_indexing(true)
-            .shader_uniform_buffer_array_non_uniform_indexing(true)
-            .descriptor_binding_sampled_image_update_after_bind(true)
-            .descriptor_binding_storage_buffer_update_after_bind(true)
-            .buffer_device_address(true);
+        self.features_12 = self.features_12.buffer_device_address(true);
+
+        self.descriptor_ext = Some(
+            vk::PhysicalDeviceDescriptorIndexingFeaturesEXT::default()
+                .runtime_descriptor_array(true)
+                .descriptor_binding_partially_bound(true)
+                .descriptor_binding_sampled_image_update_after_bind(true)
+                .descriptor_binding_sampled_image_update_after_bind(true)
+                .descriptor_binding_uniform_buffer_update_after_bind(true)
+                .descriptor_binding_sampled_image_update_after_bind(true)
+                .descriptor_binding_storage_buffer_update_after_bind(true)
+                .shader_sampled_image_array_non_uniform_indexing(true)
+                .shader_storage_buffer_array_non_uniform_indexing(true)
+                .shader_uniform_buffer_array_non_uniform_indexing(true),
+        );
 
         self
     }
@@ -305,6 +338,16 @@ impl<'a> DeviceBuilder<'a> {
         self
     }
 
+    pub fn ext_shader_object(mut self) -> Self {
+        self.extensions
+            .push(CString::new("VK_EXT_shader_object").unwrap());
+        self.features_11 = self.features_11.shader_draw_parameters(true);
+        self.shader_object_ext =
+            Some(vk::PhysicalDeviceShaderObjectFeaturesEXT::default().shader_object(true));
+
+        self
+    }
+
     pub fn build(mut self) -> (ash::Device, vk::PhysicalDevice, TKQueue, TKQueue) {
         let raw_ext: Vec<*const i8> = self.extensions.iter().map(|raw| raw.as_ptr()).collect();
 
@@ -314,11 +357,26 @@ impl<'a> DeviceBuilder<'a> {
             init::device_create_into(self.transfer_queue.family).queue_priorities(&priority),
         ];
 
-        let info = vk::DeviceCreateInfo::default()
+        let mut info = vk::DeviceCreateInfo::default()
             .enabled_extension_names(&raw_ext)
             .enabled_features(&self.features)
             .queue_create_infos(&device_queue_info)
+            .push_next(&mut self.features_11)
+            .push_next(&mut self.features_12)
             .push_next(&mut self.features_13);
+
+        let mut des_ext;
+        let mut shader_ext;
+
+        if self.descriptor_ext.is_some() {
+            des_ext = self.descriptor_ext.unwrap();
+            info = info.push_next(&mut des_ext); // might be illegal
+        }
+
+        if self.shader_object_ext.is_some() {
+            shader_ext = self.shader_object_ext.unwrap();
+            info = info.push_next(&mut shader_ext);
+        }
 
         unsafe {
             let device = self

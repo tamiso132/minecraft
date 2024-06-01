@@ -51,6 +51,8 @@ fn main() {
                 .ext_dynamic_rendering()
                 .ext_image_cube_array()
                 .ext_sampler_anisotropy()
+                .ext_bindless_descriptors()
+                .ext_shader_object()
                 .select_physical_device()
                 .build();
 
@@ -109,19 +111,29 @@ fn main() {
             .create_descriptor_pool(&descriptor_pool_info, None)
             .unwrap();
 
-        let mut bindings = vec![];
+        let mut bindings: Vec<vk::DescriptorSetLayoutBinding> = vec![];
         let mut set_layout_binding_flags = vec![];
         for i in 0..pool_sizes.len() {
-            bindings.push(init::descriptor_set_layout_binding(
-                i as u32,
-                pool_sizes[i].ty,
-                pool_sizes[i].descriptor_count,
-                vk::ShaderStageFlags::ALL,
-            ));
+            bindings.push(
+                init::descriptor_set_layout_binding(
+                    i as u32,
+                    pool_sizes[i].ty,
+                    pool_sizes[i].descriptor_count,
+                    vk::ShaderStageFlags::ALL,
+                )
+                .clone(),
+            );
 
             set_layout_binding_flags.push(
                 vk::DescriptorBindingFlags::PARTIALLY_BOUND
                     | vk::DescriptorBindingFlags::UPDATE_AFTER_BIND,
+            );
+        }
+
+        for binding in &bindings {
+            println!(
+                "Binding number: {:?}\nBinding type{:?}\n",
+                binding.binding, binding.descriptor_type
             );
         }
 
@@ -138,11 +150,20 @@ fn main() {
             .create_descriptor_set_layout(&layout_info, None)
             .unwrap();
 
-        let descriptor_set = vulkan_context.device.allocate_descriptor_sets(
-            &vk::DescriptorSetAllocateInfo::default()
-                .descriptor_pool(descriptor_pool)
-                .set_layouts(&[set_layout]),
-        ).unwrap();
-        
+        let descriptor_set = vulkan_context
+            .device
+            .allocate_descriptor_sets(
+                &vk::DescriptorSetAllocateInfo::default()
+                    .descriptor_pool(descriptor_pool)
+                    .set_layouts(&[set_layout]),
+            )
+            .unwrap();
+
+        util::create_shader(
+            &vulkan_context,
+            "shaders/spiv/gui.vert.spv".to_owned(),
+            vk::ShaderStageFlags::VERTEX,
+            set_layout,
+        );
     }
 }

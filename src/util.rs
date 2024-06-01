@@ -1,8 +1,11 @@
-use std::ffi::CString;
+use std::{ffi::CString, fs::File, io::Read};
 
-use ash::vk::{self, CommandBufferLevel, CommandPool};
+use ash::vk::{self, CommandBufferLevel, CommandPool, ShaderStageFlags};
 
-use crate::{builder::VulkanContext, init};
+use crate::{
+    builder::{ExtLoader, VulkanContext},
+    init,
+};
 
 pub fn create_cmd(
     context: &VulkanContext,
@@ -60,8 +63,51 @@ pub fn debug_object_set_name(
     debug_info.object_type = object_type;
 
     unsafe {
-        (context.set_debug_util_object_name_ext)(context.device.handle(), &debug_info)
-            .result()
-            .expect("failed to set name");
+        (context.extension_loader.set_debug_util_object_name_ext)(
+            context.device.handle(),
+            &debug_info,
+        )
+        .result()
+        .expect("failed to set name");
+    }
+}
+
+pub fn load_shader(path: String) -> Vec<u8> {
+    let mut file = File::open(path.clone()).expect(&format!("unable to read file {}", path));
+    let mut buffer = vec![];
+    file.read_to_end(&mut buffer).expect("unable to read file");
+
+    return buffer;
+}
+
+pub fn create_shader(
+    context: &VulkanContext,
+    path: String,
+    shader_stage: vk::ShaderStageFlags,
+    descriptor_layout: vk::DescriptorSetLayout,
+) -> vk::ShaderEXT {
+    let data = load_shader(path);
+    let name = CString::new("main").unwrap();
+
+    let layouts = [descriptor_layout];
+    println!("code size = {:?}\n", &data.len());
+    let shader_info = init::shader_create_info(shader_stage)
+        .code(&data)
+        .name(&name)
+        .set_layouts(&layouts);
+
+    let mut shader = vk::ShaderEXT::null();
+    unsafe {
+        (context.extension_loader.create_shader_ext)(
+            context.device.handle(),
+            1,
+            &shader_info,
+            std::ptr::null(),
+            &mut shader,
+        )
+        .result()
+        .expect("failed to create shader ext object");
+
+        shader
     }
 }
