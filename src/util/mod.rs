@@ -1,17 +1,22 @@
-use std::{ffi::CString, fs::File, io::Read};
-
-use ash::vk::{self, CommandBufferLevel, CommandPool, ShaderStageFlags};
-
-use crate::{
-    builder::{ExtLoader, VulkanContext},
-    init,
+use std::{
+    ffi::{c_void, CString},
+    fs::File,
+    io::Read,
+    panic::UnwindSafe,
 };
 
-pub fn create_cmd(
-    context: &VulkanContext,
-    queue_family: u32,
-    pool: CommandPool,
-) -> vk::CommandBuffer {
+use ash::vk::{self, CommandBufferLevel, CommandPool, ShaderStageFlags};
+use vk_mem::Alloc;
+
+use crate::vulkan::VulkanContext;
+
+pub mod builder;
+pub mod init;
+pub mod loader;
+pub mod mesh;
+pub mod resource;
+
+pub fn create_cmd(context: &VulkanContext, pool: CommandPool) -> vk::CommandBuffer {
     let cmd_info = vk::CommandBufferAllocateInfo::default()
         .command_pool(pool)
         .level(CommandBufferLevel::PRIMARY)
@@ -63,12 +68,9 @@ pub fn debug_object_set_name(
     debug_info.object_type = object_type;
 
     unsafe {
-        (context.extension_loader.set_debug_util_object_name_ext)(
-            context.device.handle(),
-            &debug_info,
-        )
-        .result()
-        .expect("failed to set name");
+        context
+            .debug_loader_ext
+            .set_debug_util_object_name_ext(debug_info);
     }
 }
 
@@ -96,18 +98,9 @@ pub fn create_shader(
         .name(&name)
         .set_layouts(&layouts);
 
-    let mut shader = vk::ShaderEXT::null();
-    unsafe {
-        (context.extension_loader.create_shader_ext)(
-            context.device.handle(),
-            1,
-            &shader_info,
-            std::ptr::null(),
-            &mut shader,
-        )
-        .result()
-        .expect("failed to create shader ext object");
-
-        shader
-    }
+    let shader = context
+        .shader_loader_ext
+        .create_shaders_ext(shader_info)
+        .expect("failed to create a shader");
+    shader
 }
