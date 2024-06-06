@@ -3,7 +3,8 @@ use std::{ffi::CString, mem::MaybeUninit, ptr, sync::Arc};
 use ash::{
     util,
     vk::{
-        self, BufferUsageFlags, DebugUtilsObjectNameInfoEXT, DescriptorType, MemoryPropertyFlags,
+        self, BufferUsageFlags, DebugUtilsObjectNameInfoEXT, DescriptorType, ImageLayout,
+        MemoryPropertyFlags,
     },
 };
 use vk_mem::Alloc;
@@ -45,6 +46,9 @@ pub struct AllocatedImage {
     pub alloc: Option<vk_mem::Allocation>,
     pub image: vk::Image,
     pub view: vk::ImageView,
+
+    pub format: vk::Format,
+    pub layout: vk::ImageLayout,
     pub descriptor_type: vk::DescriptorType,
 }
 
@@ -55,6 +59,8 @@ impl Default for AllocatedImage {
             image: Default::default(),
             view: Default::default(),
             descriptor_type: vk::DescriptorType::SAMPLER,
+            format: vk::Format::R8G8B8A8_SRGB,
+            layout: vk::ImageLayout::UNDEFINED,
         }
     }
 }
@@ -86,6 +92,7 @@ pub struct Resource {
 
 impl Resource {
     const MAX_BINDINGS: u32 = 1024;
+
     pub unsafe fn new(
         instance: Arc<ash::Instance>,
         device: Arc<ash::Device>,
@@ -290,6 +297,8 @@ impl Resource {
                 image: image.0,
                 view,
                 descriptor_type: vk::DescriptorType::STORAGE_IMAGE,
+                format,
+                layout: ImageLayout::UNDEFINED,
             };
 
             self.debug_loader
@@ -306,7 +315,7 @@ impl Resource {
                         .object_name(&name),
                 )
                 .unwrap();
-
+            // TODO, automatically transfer it to general layout
             self.bind_image(&alloc_image);
 
             alloc_image

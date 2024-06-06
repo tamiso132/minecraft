@@ -1,5 +1,3 @@
-#!/bin/bash
-
 # Directory containing the GLSL shaders
 shader_dir="shaders"
 

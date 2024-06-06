@@ -26,8 +26,8 @@ pub struct SkyBoxPushConstant {
 impl SkyBoxPushConstant {
     pub fn new() -> Self {
         Self {
-            data1: glm::vec4(1.0, 1.0, 1.0, 1.0),
-            data2: glm::vec4(1.0, 1.0, 1.0, 1.0),
+            data1: glm::vec4(0.5, 0.5, 0.5, 0.5),
+            data2: glm::vec4(1.0, 0.5, 0.5, 0.5),
             data3: glm::vec4(1.0, 1.0, 1.0, 1.0),
             data4: glm::vec4(1.0, 1.0, 1.0, 1.0),
         }
@@ -49,6 +49,10 @@ impl PushConstant for SkyBoxPushConstant {
             .offset(0)
             .stage_flags(self.stage_flag())
     }
+}
+
+struct Application {
+    context: VulkanContext,
 }
 
 pub struct VulkanContext {

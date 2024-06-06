@@ -8,7 +8,9 @@ use std::{
 use ash::{
     ext::debug_utils,
     khr::swapchain,
-    vk::{self, ApplicationInfo, ColorSpaceKHR, MemoryPropertyFlags, Queue, QueueFlags},
+    vk::{
+        self, ApplicationInfo, ColorSpaceKHR, ImageLayout, MemoryPropertyFlags, Queue, QueueFlags,
+    },
     Entry,
 };
 use vk_mem::{Alloc, AllocationCreateInfo, Allocator, AllocatorCreateInfo};
@@ -453,6 +455,8 @@ impl<'a> SwapchainBuilder<'a> {
                         alloc: None,
                         image,
                         view,
+                        format: self.image_format,
+                        layout: ImageLayout::UNDEFINED,
                     }
                 })
                 .collect();
@@ -492,6 +496,8 @@ impl<'a> SwapchainBuilder<'a> {
                 image: depth.0,
                 view: depth_view,
                 descriptor_type: vk::DescriptorType::STORAGE_IMAGE,
+                format: vk::Format::D16_UNORM,
+                layout: ImageLayout::UNDEFINED,
             };
         }
     }

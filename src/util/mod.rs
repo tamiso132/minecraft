@@ -285,6 +285,7 @@ pub fn transition_image_color(device: &ash::Device, cmd: vk::CommandBuffer, imag
     }
 }
 
+// TODO, make this more general to use
 pub fn copy_image(
     context: &VulkanContext,
     src_image: &AllocatedImage,
