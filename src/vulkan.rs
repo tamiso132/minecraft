@@ -1,16 +1,63 @@
 use std::sync::Arc;
 
 use ash::vk::{self, QueueFlags};
-use vk_mem::Allocator;
+use vk_mem::{Alloc, Allocator};
 
-use crate::util::loader::{DebugLoaderEXT, ShaderLoaderEXT};
+use crate::util::{
+    create_fence, create_semphore,
+    loader::{DebugLoaderEXT, ShaderLoaderEXT},
+    resource::{self, AllocatedImage, Resource},
+};
+
+pub trait PushConstant {
+    fn size(&self) -> u64;
+    fn stage_flag(&self) -> vk::ShaderStageFlags;
+    fn push_constant_range(&self) -> vk::PushConstantRange;
+}
+
+#[repr(C)]
+pub struct SkyBoxPushConstant {
+    data1: glm::Vec4,
+    data2: glm::Vec4,
+    data3: glm::Vec4,
+    data4: glm::Vec4,
+}
+
+impl SkyBoxPushConstant {
+    pub fn new() -> Self {
+        Self {
+            data1: glm::vec4(1.0, 1.0, 1.0, 1.0),
+            data2: glm::vec4(1.0, 1.0, 1.0, 1.0),
+            data3: glm::vec4(1.0, 1.0, 1.0, 1.0),
+            data4: glm::vec4(1.0, 1.0, 1.0, 1.0),
+        }
+    }
+}
+
+impl PushConstant for SkyBoxPushConstant {
+    fn size(&self) -> u64 {
+        std::mem::size_of::<SkyBoxPushConstant>() as u64
+    }
+
+    fn stage_flag(&self) -> vk::ShaderStageFlags {
+        vk::ShaderStageFlags::COMPUTE
+    }
+
+    fn push_constant_range(&self) -> vk::PushConstantRange {
+        vk::PushConstantRange::default()
+            .size(self.size() as u32)
+            .offset(0)
+            .stage_flags(self.stage_flag())
+    }
+}
 
 pub struct VulkanContext {
     pub entry: ash::Entry,
     pub instance: Arc<ash::Instance>,
     pub device: Arc<ash::Device>,
     pub physical: vk::PhysicalDevice,
-    pub allocator: vk_mem::Allocator,
+    /// Don't forget to clean this one up
+    pub allocator: Arc<vk_mem::Allocator>,
 
     pub window_extent: vk::Extent2D,
     pub window: winit::window::Window,
@@ -33,7 +80,17 @@ pub struct VulkanContext {
     pub debug_loader: Option<ash::ext::debug_utils::Instance>,
 
     pub debug_loader_ext: DebugLoaderEXT,
-    pub shader_loader_ext: ShaderLoaderEXT,
+
+    pub pipeline_layout: vk::PipelineLayout,
+    pub resources: Resource,
+
+    pub max_swapchain_images: u32,
+    pub swapchain_index: u32,
+
+    pub queue_is_done_fen: vk::Fence,
+
+    pub image_aquired_semp: vk::Semaphore,
+    pub render_is_done: vk::Semaphore,
 }
 
 impl VulkanContext {
@@ -45,10 +102,11 @@ impl VulkanContext {
         window: winit::window::Window,
     ) -> Self {
         unsafe {
-            let allocator = Allocator::new(vk_mem::AllocatorCreateInfo::new(
-                &instance, &device, physical,
-            ))
-            .expect("failed to create vma allocator");
+            let mut allocator_info = vk_mem::AllocatorCreateInfo::new(&instance, &device, physical);
+            allocator_info.flags |= vk_mem::AllocatorCreateFlags::BUFFER_DEVICE_ADDRESS;
+
+            let allocator =
+                Arc::new(Allocator::new(allocator_info).expect("failed to create vma allocator"));
 
             let surface_loader = ash::khr::surface::Instance::new(&entry, &instance);
 
@@ -61,6 +119,16 @@ impl VulkanContext {
 
             let instance = Arc::new(instance);
             let device = Arc::new(device);
+
+            let debug_loader_ext = DebugLoaderEXT::new(instance.clone(), device.clone());
+
+            let resources = resource::Resource::new(
+                instance.clone(),
+                device.clone(),
+                physical,
+                allocator.clone(),
+                debug_loader_ext.clone(),
+            );
             Self {
                 entry,
                 instance: instance.clone(),
@@ -86,31 +154,20 @@ impl VulkanContext {
                 debug_messenger: Default::default(),
                 debug_loader: None,
 
-                debug_loader_ext: DebugLoaderEXT::new(instance.clone(), device.clone()),
-                shader_loader_ext: ShaderLoaderEXT::new(instance.clone(), device.clone()),
+                debug_loader_ext,
+                pipeline_layout: vk::PipelineLayout::null(),
+
+                resources,
+                swapchain_index: 0,
+                max_swapchain_images: 0,
+                queue_is_done_fen: create_fence(&device),
+                image_aquired_semp: create_semphore(&device),
+                render_is_done: create_semphore(&device),
             }
         }
     }
 }
-
-pub struct AllocatedImage {
-    pub alloc: Option<vk_mem::Allocation>,
-    pub image: vk::Image,
-    pub view: vk::ImageView,
-}
-
-impl Default for AllocatedImage {
-    fn default() -> Self {
-        Self {
-            alloc: Default::default(),
-            image: Default::default(),
-            view: Default::default(),
-        }
-    }
-}
-
-
-
+#[derive(Debug)]
 pub struct TKQueue {
     pub queue: vk::Queue,
     pub family: u32,

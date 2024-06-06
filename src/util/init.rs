@@ -120,3 +120,24 @@ pub fn shader_create_info(shader_stage: vk::ShaderStageFlags) -> vk::ShaderCreat
         .stage(shader_stage)
         .next_stage(next_stage)
 }
+
+pub fn image_barrier_info(
+    image: vk::Image,
+    old_layout: vk::ImageLayout,
+    new_layout: vk::ImageLayout,
+    src: vk::AccessFlags,
+    dst: vk::AccessFlags,
+) -> vk::ImageMemoryBarrier<'static> {
+    let subresource_range = vk::ImageSubresourceRange::default()
+        .aspect_mask(vk::ImageAspectFlags::COLOR)
+        .level_count(1)
+        .layer_count(1);
+
+    vk::ImageMemoryBarrier::default()
+        .src_access_mask(src)
+        .dst_access_mask(dst)
+        .subresource_range(subresource_range)
+        .image(image)
+        .old_layout(old_layout)
+        .new_layout(new_layout)
+}

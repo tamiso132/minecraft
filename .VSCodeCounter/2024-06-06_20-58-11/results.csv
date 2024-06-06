@@ -1,0 +1,10 @@
+"filename", "language", "Rust", "comment", "blank", "total"
+"/home/tom/projects/minecraft/src/main.rs", "Rust", 231, 12, 50, 293
+"/home/tom/projects/minecraft/src/util/builder.rs", "Rust", 472, 11, 88, 571
+"/home/tom/projects/minecraft/src/util/init.rs", "Rust", 126, 0, 18, 144
+"/home/tom/projects/minecraft/src/util/loader.rs", "Rust", 122, 14, 20, 156
+"/home/tom/projects/minecraft/src/util/mesh.rs", "Rust", 0, 0, 1, 1
+"/home/tom/projects/minecraft/src/util/mod.rs", "Rust", 267, 1, 46, 314
+"/home/tom/projects/minecraft/src/util/resource.rs", "Rust", 265, 1, 50, 316
+"/home/tom/projects/minecraft/src/vulkan.rs", "Rust", 196, 1, 40, 237
+"Total", "-", 1679, 40, 313, 2032

@@ -14,18 +14,20 @@ use ash::{
 use vk_mem::{Alloc, AllocationCreateInfo, Allocator, AllocatorCreateInfo};
 use winit::raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 
-use crate::vulkan::{AllocatedImage, TKQueue, VulkanContext};
+use crate::vulkan::{TKQueue, VulkanContext};
 
-use super::{init, loader::{DebugLoaderEXT, ShaderLoaderEXT}};
+use super::{
+    init,
+    loader::{DebugLoaderEXT, ShaderLoaderEXT},
+    resource::AllocatedImage,
+};
 
 // everything that is not a builder, will be moved later from here
-
-
 
 // specific implementation
 
 struct DeviceHelper {}
-
+#[derive(Debug)]
 pub struct DeviceBuilder<'a> {
     features: vk::PhysicalDeviceFeatures,
     features_11: vk::PhysicalDeviceVulkan11Features<'a>,
@@ -33,9 +35,7 @@ pub struct DeviceBuilder<'a> {
     features_13: vk::PhysicalDeviceVulkan13Features<'a>,
     extensions: Vec<CString>,
     physical: vk::PhysicalDevice,
-    instance: ash::Instance,
 
-    descriptor_ext: Option<vk::PhysicalDeviceDescriptorIndexingFeaturesEXT<'a>>,
     shader_object_ext: Option<vk::PhysicalDeviceShaderObjectFeaturesEXT<'a>>,
 
     transfer_queue: TKQueue,
@@ -43,7 +43,7 @@ pub struct DeviceBuilder<'a> {
 }
 
 impl<'a> DeviceBuilder<'a> {
-    pub fn new(instance: ash::Instance) -> Self {
+    pub fn new() -> Self {
         let features = vk::PhysicalDeviceFeatures::default();
         let features_11 = vk::PhysicalDeviceVulkan11Features::default();
         let features_12 = vk::PhysicalDeviceVulkan12Features::default();
@@ -63,7 +63,6 @@ impl<'a> DeviceBuilder<'a> {
         };
 
         Self {
-            descriptor_ext: None,
             shader_object_ext: None,
             features,
             features_11,
@@ -73,24 +72,21 @@ impl<'a> DeviceBuilder<'a> {
             physical,
             transfer_queue,
             graphic_queue,
-            instance,
         }
     }
 
-    pub fn select_physical_device(mut self) -> Self {
+    pub fn select_physical_device(mut self, instance: &ash::Instance) -> Self {
         let mut has_queues_required: bool = false;
 
         unsafe {
-            let physical_devices = self
-                .instance
+            let physical_devices = instance
                 .clone()
                 .enumerate_physical_devices()
                 .expect("no vulkan supported gpu");
 
             for physical in physical_devices {
-                let graphic =
-                    TKQueue::find_queue(self.instance.clone(), physical, QueueFlags::GRAPHICS);
-                let transfer = TKQueue::find_transfer_only(self.instance.clone(), physical);
+                let graphic = TKQueue::find_queue(instance.clone(), physical, QueueFlags::GRAPHICS);
+                let transfer = TKQueue::find_transfer_only(instance.clone(), physical);
 
                 if graphic.is_some() && transfer.is_some() {
                     self.transfer_queue = transfer.unwrap();
@@ -111,22 +107,21 @@ impl<'a> DeviceBuilder<'a> {
 
     #[rustfmt::skip]
     pub fn ext_bindless_descriptors(mut self) -> Self {
-        self.features_12 = self.features_12.buffer_device_address(true);
+        self.features_12 = self.features_12.
+        buffer_device_address(true)
+        .runtime_descriptor_array(true)
+        .descriptor_binding_partially_bound(true)
+        .descriptor_binding_sampled_image_update_after_bind(true)
+        .descriptor_binding_storage_image_update_after_bind(true)
+        .descriptor_binding_sampled_image_update_after_bind(true)
+        .descriptor_binding_uniform_buffer_update_after_bind(true)
+        .descriptor_binding_sampled_image_update_after_bind(true)
+        .descriptor_binding_storage_buffer_update_after_bind(true)
+        .shader_sampled_image_array_non_uniform_indexing(true)
+        .shader_storage_buffer_array_non_uniform_indexing(true)
+        .shader_uniform_buffer_array_non_uniform_indexing(true);
 
-        self.descriptor_ext = Some(
-            vk::PhysicalDeviceDescriptorIndexingFeaturesEXT::default()
-                .runtime_descriptor_array(true)
-                .descriptor_binding_partially_bound(true)
-                .descriptor_binding_sampled_image_update_after_bind(true)
-                .descriptor_binding_sampled_image_update_after_bind(true)
-                .descriptor_binding_uniform_buffer_update_after_bind(true)
-                .descriptor_binding_sampled_image_update_after_bind(true)
-                .descriptor_binding_storage_buffer_update_after_bind(true)
-                .shader_sampled_image_array_non_uniform_indexing(true)
-                .shader_storage_buffer_array_non_uniform_indexing(true)
-                .shader_uniform_buffer_array_non_uniform_indexing(true),
-        );
-
+        self.extensions.push(CString::new("VK_KHR_buffer_device_address").unwrap());
         self
     }
 
@@ -149,16 +144,21 @@ impl<'a> DeviceBuilder<'a> {
     }
 
     pub fn ext_shader_object(mut self) -> Self {
-        self.extensions
-            .push(CString::new("VK_EXT_shader_object").unwrap());
-        self.features_11 = self.features_11.shader_draw_parameters(true);
-        self.shader_object_ext =
-            Some(vk::PhysicalDeviceShaderObjectFeaturesEXT::default().shader_object(true));
+        // self.extensions
+        //     .push(CString::new("VK_EXT_shader_object").unwrap());
+        // self.shader_object_ext =
+        //     Some(vk::PhysicalDeviceShaderObjectFeaturesEXT::default().shader_object(true));
 
         self
     }
 
-    pub fn build(mut self) -> (ash::Device, vk::PhysicalDevice, TKQueue, TKQueue) {
+    pub fn build(
+        mut self,
+        instance: &ash::Instance,
+    ) -> (ash::Device, vk::PhysicalDevice, TKQueue, TKQueue) {
+        for ext in &self.extensions {
+            println!("{:?}\n", ext.as_c_str());
+        }
         let raw_ext: Vec<*const i8> = self.extensions.iter().map(|raw| raw.as_ptr()).collect();
 
         let priority = [1.0 as f32];
@@ -167,7 +167,7 @@ impl<'a> DeviceBuilder<'a> {
             init::device_create_into(self.transfer_queue.family).queue_priorities(&priority),
         ];
 
-        let mut info = vk::DeviceCreateInfo::default()
+        let info = vk::DeviceCreateInfo::default()
             .enabled_extension_names(&raw_ext)
             .enabled_features(&self.features)
             .queue_create_infos(&device_queue_info)
@@ -175,24 +175,18 @@ impl<'a> DeviceBuilder<'a> {
             .push_next(&mut self.features_12)
             .push_next(&mut self.features_13);
 
-        let mut des_ext;
-        let mut shader_ext;
-
-        if self.descriptor_ext.is_some() {
-            des_ext = self.descriptor_ext.unwrap();
-            info = info.push_next(&mut des_ext); // might be illegal
-        }
-
-        if self.shader_object_ext.is_some() {
-            shader_ext = self.shader_object_ext.unwrap();
-            info = info.push_next(&mut shader_ext);
-        }
-
         unsafe {
-            let device = self
-                .instance
+            let device = instance
                 .create_device(self.physical, &info, None)
                 .expect("failed created a logical device");
+
+            // for ext in self
+            //     .instance
+            //     .enumerate_device_extension_properties(self.physical)
+            //     .unwrap()
+            // {
+            //     println!("{:?}\n", ext.extension_name_as_c_str());
+            // }
 
             self.graphic_queue.queue =
                 device.get_device_queue2(&init::device_queue_info(self.graphic_queue.family));
@@ -356,6 +350,7 @@ impl<'a> SwapchainBuilder<'a> {
             .surface_loader
             .get_physical_device_surface_formats(vulkan_context.physical, vulkan_context.surface)
             .unwrap();
+
         for format in formats {
             println!(
                 "Available formats {:?}\nWith Color space {:?}\n\n",
@@ -414,7 +409,9 @@ impl<'a> SwapchainBuilder<'a> {
                 .image_format(self.image_format)
                 .image_sharing_mode(self.sharing_mode)
                 .min_image_count(self.min_image_count)
-                .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
+                .image_usage(
+                    vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_DST,
+                )
                 .image_array_layers(1)
                 .surface(self.vulkan_context.surface)
                 .pre_transform(self.transform)
@@ -432,6 +429,7 @@ impl<'a> SwapchainBuilder<'a> {
                 .swapchain_loader
                 .get_swapchain_images(swapchain)
                 .unwrap();
+
             let swapchain_images_alloc: Vec<AllocatedImage> = swapchain_images
                 .iter()
                 .map(|&image| {
@@ -451,6 +449,7 @@ impl<'a> SwapchainBuilder<'a> {
                         .unwrap();
 
                     AllocatedImage {
+                        descriptor_type: vk::DescriptorType::STORAGE_IMAGE,
                         alloc: None,
                         image,
                         view,
@@ -486,11 +485,13 @@ impl<'a> SwapchainBuilder<'a> {
                 .unwrap();
             self.vulkan_context.swapchain_images = swapchain_images_alloc;
             self.vulkan_context.swapchain = swapchain;
+            self.vulkan_context.max_swapchain_images = self.min_image_count;
 
             self.vulkan_context.depth_image = AllocatedImage {
                 alloc: Some(depth.1),
                 image: depth.0,
                 view: depth_view,
+                descriptor_type: vk::DescriptorType::STORAGE_IMAGE,
             };
         }
     }
@@ -524,4 +525,38 @@ unsafe extern "system" fn vulkan_debug_callback(
     );
 
     vk::FALSE
+}
+
+pub struct ComputePipelineBuilder {
+    compute_shader: vk::ShaderModule,
+}
+
+impl ComputePipelineBuilder {
+    pub fn new(compute_shader: vk::ShaderModule) -> Self {
+        Self { compute_shader }
+    }
+
+    pub fn build(
+        &self,
+        context: &VulkanContext,
+        pipeline_layout: vk::PipelineLayout,
+    ) -> vk::Pipeline {
+        let name = CString::new("main").unwrap();
+
+        let compute_pipeline_info = vec![vk::ComputePipelineCreateInfo::default()
+            .layout(pipeline_layout)
+            .stage(
+                vk::PipelineShaderStageCreateInfo::default()
+                    .stage(vk::ShaderStageFlags::COMPUTE)
+                    .module(self.compute_shader)
+                    .name(&name),
+            )];
+
+        unsafe {
+            context
+                .device
+                .create_compute_pipelines(vk::PipelineCache::null(), &compute_pipeline_info, None)
+                .unwrap()[0]
+        }
+    }
 }
