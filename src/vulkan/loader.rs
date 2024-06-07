@@ -1,44 +1,37 @@
+use crate::vk::{Device, Result};
+use ash::{
+    prelude::VkResult,
+    vk::{self, DebugUtilsObjectNameInfoEXT},
+};
 use std::{
     ffi::CString,
     mem::{self, MaybeUninit},
     sync::Arc,
 };
 
-use ash::{prelude::VkResult, vk};
+// Define the type alias for the Vulkan function pointer type
 
 #[derive(Clone)]
-pub struct DebugLoaderEXT {
-    instance: Arc<ash::Instance>,
-    device: Arc<ash::Device>,
+pub struct DebugLoaderEXT<'a> {
+    instance: &'a ash::Instance,
+    device: &'a ash::Device,
 
     set_debug_util_object_name_ext: vk::PFN_vkSetDebugUtilsObjectNameEXT,
 }
 
-impl DebugLoaderEXT {
-    pub fn new(instance: Arc<ash::Instance>, device: Arc<ash::Device>) -> Self {
+impl<'a> DebugLoaderEXT<'a> {
+    pub fn new(instance: &'a ash::Instance, device: &'a ash::Device) -> Self {
         let func_name = CString::new("vkSetDebugUtilsObjectNameEXT").unwrap();
         unsafe {
             let set_debug_util_object_name_ext: vk::PFN_vkSetDebugUtilsObjectNameEXT =
-                std::mem::transmute(
-                    instance
-                        .get_device_proc_addr(device.handle(), func_name.as_ptr())
-                        .unwrap(),
-                );
+                std::mem::transmute(instance.get_device_proc_addr(device.handle(), func_name.as_ptr()).unwrap());
 
-            Self {
-                instance,
-                device,
-                set_debug_util_object_name_ext,
-            }
+            Self { instance, device, set_debug_util_object_name_ext }
         }
     }
-    pub unsafe fn set_debug_util_object_name_ext(
-        &self,
-        debug_object_info: vk::DebugUtilsObjectNameInfoEXT,
-    ) -> VkResult<()> {
+    pub unsafe fn set_debug_util_object_name_ext(&self, debug_object_info: vk::DebugUtilsObjectNameInfoEXT) -> VkResult<()> {
         let maybe = MaybeUninit::uninit();
-        (self.set_debug_util_object_name_ext)(self.device.handle(), &debug_object_info)
-            .assume_init_on_success(maybe)
+        (self.set_debug_util_object_name_ext)(self.device.handle(), &debug_object_info).assume_init_on_success(maybe)
     }
 }
 
@@ -62,29 +55,17 @@ impl ShaderLoaderEXT {
         let cmd_push_constants_name = CString::new("vkCmdPushConstants2KHR").unwrap();
 
         unsafe {
-            let cmd_bind_shaders_ext: vk::PFN_vkCmdBindShadersEXT = std::mem::transmute(
-                instance
-                    .get_device_proc_addr(device.handle(), cmd_bind_shaders_name.as_ptr())
-                    .unwrap(),
-            );
+            let cmd_bind_shaders_ext: vk::PFN_vkCmdBindShadersEXT =
+                std::mem::transmute(instance.get_device_proc_addr(device.handle(), cmd_bind_shaders_name.as_ptr()).unwrap());
 
-            let cmd_set_cull_mode: vk::PFN_vkCmdSetCullMode = std::mem::transmute(
-                instance
-                    .get_device_proc_addr(device.handle(), cmd_set_cull_mode.as_ptr())
-                    .unwrap(),
-            );
+            let cmd_set_cull_mode: vk::PFN_vkCmdSetCullMode =
+                std::mem::transmute(instance.get_device_proc_addr(device.handle(), cmd_set_cull_mode.as_ptr()).unwrap());
 
-            let cmd_set_depth_write_enable: vk::PFN_vkCmdSetDepthWriteEnable = std::mem::transmute(
-                instance
-                    .get_device_proc_addr(device.handle(), cmd_set_depth_write_name.as_ptr())
-                    .unwrap(),
-            );
+            let cmd_set_depth_write_enable: vk::PFN_vkCmdSetDepthWriteEnable =
+                std::mem::transmute(instance.get_device_proc_addr(device.handle(), cmd_set_depth_write_name.as_ptr()).unwrap());
 
-            let create_shaders_ext: vk::PFN_vkCreateShadersEXT = std::mem::transmute(
-                instance
-                    .get_device_proc_addr(device.handle(), create_shader_ext_name.as_ptr())
-                    .unwrap(),
-            );
+            let create_shaders_ext: vk::PFN_vkCreateShadersEXT =
+                std::mem::transmute(instance.get_device_proc_addr(device.handle(), create_shader_ext_name.as_ptr()).unwrap());
 
             // let cmd_push_constants_2khr: vk::PFN_vkCmdPushConstants2KHR = std::mem::transmute(
             //     instance
@@ -102,12 +83,7 @@ impl ShaderLoaderEXT {
             }
         }
     }
-    pub fn cmd_bind_shaders_ext(
-        &self,
-        shader: vk::ShaderEXT,
-        cmd: vk::CommandBuffer,
-        shader_flag: vk::ShaderStageFlags,
-    ) {
+    pub fn cmd_bind_shaders_ext(&self, shader: vk::ShaderEXT, cmd: vk::CommandBuffer, shader_flag: vk::ShaderStageFlags) {
         unsafe {
             (self.cmd_bind_shaders_ext)(cmd, 1, &shader_flag, &shader);
         }
@@ -134,22 +110,13 @@ impl ShaderLoaderEXT {
     //     }
     // }
 
-    pub type VkResult<T> = Result<T, vk::Result>;
+    pub type VkResult<T> = Result;
 
-    pub fn create_shaders_ext(
-        &self,
-        shader_create_info: vk::ShaderCreateInfoEXT,
-    ) -> VkResult<vk::ShaderEXT> {
+    pub fn create_shaders_ext(&self, shader_create_info: vk::ShaderCreateInfoEXT) -> VkResult<vk::ShaderEXT> {
         let mut shader_object = mem::MaybeUninit::uninit();
         unsafe {
-            (self.create_shaders_ext)(
-                self.device.handle(),
-                1,
-                &shader_create_info,
-                std::ptr::null_mut(),
-                shader_object.as_mut_ptr(),
-            )
-            .assume_init_on_success(shader_object)
+            (self.create_shaders_ext)(self.device.handle(), 1, &shader_create_info, std::ptr::null_mut(), shader_object.as_mut_ptr())
+                .assume_init_on_success(shader_object)
         }
     }
 }

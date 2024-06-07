@@ -9,8 +9,5 @@ fn main() {
     // below detail how to improve the portability of these commands.
     Command::new("chmod").args(["+x", "build_shader.sh"]);
 
-    Command::new("bash")
-        .arg("build_shader.sh")
-        .status()
-        .unwrap();
+    Command::new("bash").arg("build_shader.sh").status().unwrap();
 }

@@ -1,6 +1,6 @@
 use std::ffi::CString;
 
-use ash::vk::{self, ImageTiling, MemoryPropertyFlags};
+use ash::vk::{self, BlendFactor, BlendOp, ImageTiling, MemoryPropertyFlags, PipelineColorBlendAttachmentState};
 use vk_mem::AllocationCreateFlags;
 
 pub fn image_subresource_info(aspect: vk::ImageAspectFlags) -> vk::ImageSubresourceRange {
@@ -52,11 +52,7 @@ pub fn image_info(
     (image_info, alloc_info)
 }
 
-pub fn image_view_info(
-    image: vk::Image,
-    format: vk::Format,
-    aspect: vk::ImageAspectFlags,
-) -> vk::ImageViewCreateInfo<'static> {
+pub fn image_view_info(image: vk::Image, format: vk::Format, aspect: vk::ImageAspectFlags) -> vk::ImageViewCreateInfo<'static> {
     vk::ImageViewCreateInfo::default()
         .format(format)
         .view_type(vk::ImageViewType::TYPE_2D)
@@ -65,14 +61,11 @@ pub fn image_view_info(
 }
 
 pub fn device_queue_info(family_index: u32) -> vk::DeviceQueueInfo2<'static> {
-    vk::DeviceQueueInfo2::default()
-        .queue_family_index(family_index)
-        .queue_index(0)
+    vk::DeviceQueueInfo2::default().queue_family_index(family_index).queue_index(0)
 }
 
 pub fn device_create_into(family_index: u32) -> vk::DeviceQueueCreateInfo<'static> {
-    let mut device_queue_info =
-        vk::DeviceQueueCreateInfo::default().queue_family_index(family_index);
+    let mut device_queue_info = vk::DeviceQueueCreateInfo::default().queue_family_index(family_index);
 
     device_queue_info.queue_count = 1;
     device_queue_info
@@ -84,13 +77,12 @@ pub fn command_pool_info(family_queue: u32) -> vk::CommandPoolCreateInfo<'static
         .queue_family_index(family_queue)
 }
 
-pub fn descriptor_pool_size(
-    descriptor_type: vk::DescriptorType,
-    amount: u32,
-) -> vk::DescriptorPoolSize {
-    vk::DescriptorPoolSize::default()
-        .descriptor_count(amount)
-        .ty(descriptor_type)
+pub fn cmd_begin_info() -> vk::CommandBufferBeginInfo<'static> {
+    vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
+}
+
+pub fn descriptor_pool_size(descriptor_type: vk::DescriptorType, amount: u32) -> vk::DescriptorPoolSize {
+    vk::DescriptorPoolSize::default().descriptor_count(amount).ty(descriptor_type)
 }
 
 pub fn descriptor_set_layout_binding(
@@ -140,4 +132,16 @@ pub fn image_barrier_info(
         .image(image)
         .old_layout(old_layout)
         .new_layout(new_layout)
+}
+
+pub fn color_blend_state_info() -> PipelineColorBlendAttachmentState {
+    vk::PipelineColorBlendAttachmentState::default()
+        .color_write_mask(vk::ColorComponentFlags::R | vk::ColorComponentFlags::G | vk::ColorComponentFlags::B | vk::ColorComponentFlags::A)
+        .blend_enable(true)
+        .src_alpha_blend_factor(BlendFactor::SRC1_ALPHA)
+        .dst_alpha_blend_factor(BlendFactor::ONE_MINUS_CONSTANT_ALPHA)
+        .color_blend_op(BlendOp::ADD)
+        .src_alpha_blend_factor(BlendFactor::ONE)
+        .dst_alpha_blend_factor(BlendFactor::ONE_MINUS_SRC_ALPHA)
+        .alpha_blend_op(BlendOp::ADD)
 }
