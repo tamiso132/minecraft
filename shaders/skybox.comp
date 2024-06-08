@@ -1,4 +1,6 @@
 #version 450
+#include "bindless.glsl"
+
 layout (local_size_x = 16, local_size_y = 16) in;
 layout(rgba8,set = 1, binding = 0) uniform image2D image;
 
@@ -11,6 +13,7 @@ layout( push_constant ) uniform constants
  vec4 data2;
  vec4 data3;
  vec4 data4;
+ uint image_index;
 } PushConstants;
 
 // Return random noise in the range [0.0, 1.0], as a function of x.
@@ -55,7 +58,7 @@ float StableStarField( in vec2 vSamplePos, float fThreshhold )
 
 void mainImage( out vec4 fragColor, in vec2 fragCoord )
 {
-    vec2 iResolution = imageSize(image);
+    vec2 iResolution = imageSize(globalImages[PushConstants.image_index]);
 	// Sky Background Color
 	//vec3 vColor = vec3( 0.1, 0.2, 0.4 ) * fragCoord.y / iResolution.y;
     vec3 vColor = PushConstants.data1.xyz * fragCoord.y / iResolution.y;
@@ -80,12 +83,12 @@ void main()
 {
 	vec4 value = vec4(0.0, 0.0, 0.0, 1.0);
     ivec2 texelCoord = ivec2(gl_GlobalInvocationID.xy);
-	ivec2 size = imageSize(image);
+	ivec2 size = imageSize(globalImages[PushConstants.image_index]);
     if(texelCoord.x < size.x && texelCoord.y < size.y)
     {
         vec4 color;
         mainImage(color,texelCoord);
     
-        imageStore(image, texelCoord, color);
+        imageStore(globalImages[PushConstants.image_index], texelCoord, color);
     }   
 }

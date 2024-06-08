@@ -39,7 +39,7 @@ impl Application {
 
         let mut images = vec![];
 
-        util::begin_cmd(&vulkan.device, vulkan.main_cmd);
+        util::begin_cmd(&vulkan.device, vulkan.cmds[0]);
 
         /*Should be outside of this initilize */
         for i in 0..MAX_FRAMES_IN_FLIGHT {
@@ -56,10 +56,10 @@ impl Application {
                 std::ffi::CString::new(name).unwrap(),
             ));
 
-            util::transition_image_general(&vulkan.device, vulkan.main_cmd, images.last().unwrap().image);
+            util::transition_image_general(&vulkan.device, vulkan.cmds[0], images.last().unwrap().image);
         }
 
-        util::end_cmd_and_submit(&vulkan.device, vulkan.main_cmd, vulkan.graphic, vec![], vec![], vk::Fence::null());
+        util::end_cmd_and_submit(&vulkan.device, vulkan.cmds[0], vulkan.graphic, vec![], vec![], vk::Fence::null());
         unsafe { vulkan.device.device_wait_idle().unwrap() };
 
         Self { vulkan, compute, compute_images: images, push_constant: SkyBoxPushConstant::new() }
@@ -69,9 +69,9 @@ impl Application {
         self.vulkan.prepare_frame();
 
         let device = &self.vulkan.device;
-        let cmd = self.vulkan.main_cmd;
         let frame_index = self.vulkan.current_frame;
         let swapchain_index = self.vulkan.swapchain.image_index;
+        let cmd = self.vulkan.cmds[frame_index];
 
         device.cmd_bind_descriptor_sets(
             cmd,
@@ -83,6 +83,8 @@ impl Application {
         );
 
         device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, self.compute);
+
+        self.push_constant.image_index = self.compute_images[self.vulkan.current_frame].descriptor_index;
 
         device.cmd_push_constants(
             cmd,
@@ -118,9 +120,7 @@ fn main() {
                 WindowEvent::CloseRequested => {
                     _control_flow.exit();
                 }
-                _ => {
-                    unsafe { application.run() };
-                }
+                _ => {}
             },
             _ => {
                 unsafe { application.run() };

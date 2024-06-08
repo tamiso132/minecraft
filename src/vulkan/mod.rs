@@ -28,12 +28,13 @@ pub trait PushConstant {
     fn push_constant_range(&self) -> vk::PushConstantRange;
 }
 
-#[repr(C)]
+#[repr(C, align(16))]
 pub struct SkyBoxPushConstant {
     data1: glm::Vec4,
     data2: glm::Vec4,
     data3: glm::Vec4,
     data4: glm::Vec4,
+    pub image_index: u32,
 }
 
 impl SkyBoxPushConstant {
@@ -43,6 +44,7 @@ impl SkyBoxPushConstant {
             data2: glm::vec4(0.5, 0.5, 0.5, 0.5),
             data3: glm::vec4(1.0, 1.0, 1.0, 1.0),
             data4: glm::vec4(1.0, 1.0, 1.0, 1.0),
+            image_index: 0,
         }
     }
 }
@@ -184,8 +186,8 @@ pub struct VulkanContext {
 
     pub swapchain: Swapchain,
 
-    pub main_cmd: vk::CommandBuffer,
-    pub main_pool: vk::CommandPool,
+    pub cmds: Vec<vk::CommandBuffer>,
+    pub pools: Vec<vk::CommandPool>,
 
     pub graphic: TKQueue,
     pub transfer: TKQueue,
@@ -264,19 +266,7 @@ impl VulkanContext {
 
             let debug_loader_ext = DebugLoaderEXT::new(instance.clone(), device.clone());
 
-            let main_pool = util::create_pool(&device, graphic.get_family());
-
-            let main_cmd = util::create_cmd(&device, main_pool);
-
-            let resources = Resource::new(
-                instance.clone(),
-                device.clone(),
-                physical,
-                main_cmd,
-                graphic,
-                allocator.clone(),
-                debug_loader_ext.clone(),
-            );
+            let resources = Resource::new(instance.clone(), device.clone(), graphic, allocator.clone(), debug_loader_ext.clone());
 
             let push_vec = vec![vk::PushConstantRange::default()
                 .size(128)
@@ -294,11 +284,17 @@ impl VulkanContext {
             let mut present_done = vec![];
             let mut aquired_semp = vec![];
             let mut render_done = vec![];
+            let mut cmds = vec![];
+            let mut pools = vec![];
 
             for i in 0..max_frames_in_flight {
                 present_done.push(util::create_fence(&device));
                 aquired_semp.push(util::create_semphore(&device));
                 render_done.push(util::create_semphore(&device));
+
+                let main_pool = util::create_pool(&device, graphic.get_family());
+                cmds.push(util::create_cmd(&device, main_pool));
+                pools.push(main_pool);
             }
 
             Self {
@@ -310,8 +306,8 @@ impl VulkanContext {
                 window_extent,
                 physical,
 
-                main_cmd,
-                main_pool,
+                cmds,
+                pools,
 
                 graphic,
                 transfer,
@@ -339,7 +335,10 @@ impl VulkanContext {
     // TODO, fix default syncing things
     pub fn prepare_frame(&mut self) {
         unsafe {
-            self.device.wait_for_fences(&self.queue_done, true, u64::MAX - 1);
+            self.device
+                .wait_for_fences(&[self.queue_done[self.current_frame]], true, u64::MAX - 1)
+                .unwrap();
+            self.device.reset_fences(&[self.queue_done[self.current_frame]]).unwrap();
 
             let signal_image_aquired = self.aquired_semp[self.current_frame];
 
@@ -348,17 +347,19 @@ impl VulkanContext {
                 .acquire_next_image(self.swapchain.swap, 100000, signal_image_aquired, vk::Fence::null())
                 .unwrap();
 
-            util::begin_cmd(&self.device, self.main_cmd);
+            util::begin_cmd(&self.device, self.cmds[self.current_frame]);
         }
     }
 
     // TODO, fix default syncing and submitting
     pub fn end_frame_and_submit(&mut self) {
-        util::transition_image_present(&self.device, self.main_cmd, self.swapchain.images[self.swapchain.image_index as usize].image);
+        let cmd = self.cmds[self.current_frame];
+
+        util::transition_image_present(&self.device, cmd, self.swapchain.images[self.swapchain.image_index as usize].image);
 
         util::end_cmd_and_submit(
             &self.device,
-            self.main_cmd,
+            cmd,
             self.graphic,
             vec![self.render_done_signal[self.current_frame]],
             vec![self.aquired_semp[self.current_frame]],
@@ -372,8 +373,8 @@ impl VulkanContext {
             vec![self.render_done_signal[self.current_frame]],
         );
 
-        self.current_frame += (self.current_frame + 1) % self.max_frames_in_flight;
-        self.swapchain.image_index += (self.swapchain.image_index + 1) % self.swapchain.images.len() as u32;
+        self.current_frame = (self.current_frame + 1) % self.max_frames_in_flight;
+        self.swapchain.image_index = (self.swapchain.image_index + 1) % self.swapchain.images.len() as u32;
     }
 }
 #[derive(Debug, Clone, Copy)]

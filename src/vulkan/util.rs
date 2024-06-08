@@ -107,12 +107,10 @@ pub fn create_bindless_layout(
             vk::ShaderStageFlags::ALL,
         ))
     }
-
-    let layout_flags = vec![
-        vk::DescriptorBindingFlags::PARTIALLY_BOUND | vk::DescriptorBindingFlags::UPDATE_AFTER_BIND,
-        vk::DescriptorBindingFlags::PARTIALLY_BOUND | vk::DescriptorBindingFlags::UPDATE_AFTER_BIND,
-        vk::DescriptorBindingFlags::PARTIALLY_BOUND | vk::DescriptorBindingFlags::UPDATE_AFTER_BIND,
-    ];
+    let mut layout_flags = vec![];
+    for _ in descriptor_type {
+        layout_flags.push(vk::DescriptorBindingFlags::PARTIALLY_BOUND | vk::DescriptorBindingFlags::UPDATE_AFTER_BIND);
+    }
 
     let mut binding_flags = vk::DescriptorSetLayoutBindingFlagsCreateInfo::default().binding_flags(&layout_flags);
 
@@ -227,14 +225,21 @@ pub fn end_cmd_and_submit(
     done_fence: vk::Fence,
 ) {
     unsafe {
+        assert!(wait_semp.len() < 2, "Have not been implemented for more, look into wait_dst");
+
         device.end_command_buffer(cmd).unwrap();
+        let wait_mask = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
         let cmds = vec![cmd];
-        let submit_info = SubmitInfo::default()
+
+        let mut submit_info = SubmitInfo::default()
             .command_buffers(&cmds)
             .signal_semaphores(&signal_done)
             .wait_semaphores(&wait_semp);
 
-        device.queue_submit(queue.queue, &[submit_info], done_fence);
+        if wait_semp.len() > 0 {
+            submit_info = submit_info.wait_dst_stage_mask(&wait_mask);
+        }
+        device.queue_submit(queue.queue, &[submit_info], done_fence).unwrap();
     };
 }
 

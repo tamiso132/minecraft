@@ -13,6 +13,7 @@ enum Binding {
     CombinedImage,
     StorageImage,
     StorageBuffer,
+    UniformBuffer,
 }
 
 #[repr(u32)]
@@ -35,6 +36,7 @@ pub struct Range {
     size: u32,
     data: *mut u8,
 }
+#[derive(Debug)]
 pub struct AllocatedImage {
     pub descriptor_index: u32,
 
@@ -82,6 +84,7 @@ pub struct Resource {
 
     graphic_queue: TKQueue,
     cmd: vk::CommandBuffer,
+    pool: vk::CommandPool,
 
     debug_loader: DebugLoaderEXT,
     /// Counter according to the bindings (Combined, Storage Image, Storage Buffer)
@@ -94,8 +97,6 @@ impl Resource {
     pub unsafe fn new(
         instance: Arc<ash::Instance>,
         device: Arc<ash::Device>,
-        physical: vk::PhysicalDevice,
-        cmd: vk::CommandBuffer,
         graphic_queue: TKQueue,
         allocator: Arc<vk_mem::Allocator>,
         debug_loader_ext: DebugLoaderEXT,
@@ -104,6 +105,7 @@ impl Resource {
             init::descriptor_pool_size(vk::DescriptorType::COMBINED_IMAGE_SAMPLER, Self::MAX_BINDINGS),
             init::descriptor_pool_size(vk::DescriptorType::STORAGE_IMAGE, Self::MAX_BINDINGS),
             init::descriptor_pool_size(vk::DescriptorType::STORAGE_BUFFER, Self::MAX_BINDINGS),
+            init::descriptor_pool_size(vk::DescriptorType::UNIFORM_BUFFER, Self::MAX_BINDINGS),
         ];
 
         let descriptor_pool_info = vk::DescriptorPoolCreateInfo::default()
@@ -120,6 +122,7 @@ impl Resource {
                 DescriptorType::COMBINED_IMAGE_SAMPLER,
                 DescriptorType::STORAGE_IMAGE,
                 DescriptorType::STORAGE_BUFFER,
+                DescriptorType::UNIFORM_BUFFER,
             ],
             &debug_loader_ext,
             CString::new("global").unwrap(),
@@ -133,7 +136,6 @@ impl Resource {
             )
             .unwrap();
 
-        println!("DescriptorSet Len: {}\n", a.len());
         let set = a[0];
         debug_loader_ext
             .set_debug_util_object_name_ext(
@@ -142,6 +144,8 @@ impl Resource {
                     .object_name(&CString::new("global").unwrap()),
             )
             .unwrap();
+        let pool = util::create_pool(&device, graphic_queue.family);
+        let cmd = util::create_cmd(&device, pool);
 
         Self {
             device,
@@ -152,6 +156,7 @@ impl Resource {
             set,
             graphic_queue,
             cmd,
+            pool,
             counter: [0, 0, 0],
         }
     }
@@ -245,7 +250,7 @@ impl Resource {
     }
 
     // binds the image to the descriptor layout so it can be accessed through the shader
-    fn bind_image(&mut self, image: &mut AllocatedImage, binding: Binding) -> u32 {
+    fn bind_image(&mut self, image: &mut AllocatedImage, binding: Binding) {
         let binding = binding as usize;
 
         let descriptor_image_info = vec![vk::DescriptorImageInfo::default()
@@ -261,11 +266,11 @@ impl Resource {
             .dst_array_element(self.counter[binding])
             .image_info(&descriptor_image_info);
 
+        image.descriptor_index = self.counter[binding];
+
         self.counter[binding] += 1;
 
         unsafe { self.device.update_descriptor_sets(&vec![descriptor_write], &vec![]) };
-
-        self.counter[binding] - 1
     }
     // only for stuff that dosent change and is only gonna be read from, otherwise use storage image
     pub fn create_texture_image(&mut self, extent: vk::Extent2D, data: &[u8], bind: bool) -> AllocatedImage {

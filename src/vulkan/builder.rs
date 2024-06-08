@@ -577,7 +577,7 @@ impl SwapchainBuilder {
 
             let swapchain_images = swapchain_loader.get_swapchain_images(swapchain).unwrap();
 
-            swapchain_images.iter().map(|image| {
+            for image in swapchain_images.iter() {
                 let create_view_info = vk::ImageViewCreateInfo::default()
                     .view_type(vk::ImageViewType::TYPE_2D)
                     .format(self.image_format)
@@ -597,7 +597,7 @@ impl SwapchainBuilder {
                     extent: self.extent,
                     descriptor_index: 0,
                 });
-            });
+            }
 
             let (depth_info, alloc_info) = init::image_info(
                 self.extent,
