@@ -70,6 +70,8 @@ pub struct AllocatedBuffer {
     pub buffer: vk::Buffer,
     pub alloc: vk_mem::Allocation,
     pub buffer_type: BufferType,
+    pub memory: vk::MemoryPropertyFlags,
+    pub usage: vk::BufferUsageFlags,
     pub descriptor_type: vk::DescriptorType,
     pub size: u64,
 }
@@ -220,6 +222,21 @@ impl Resource {
                 index: self.counter[Binding::StorageImage as usize] - 1,
                 descriptor_type,
             }
+        }
+    }
+
+    pub fn resize_buffer_and_destroy(&mut self, mut old_buffer: AllocatedBuffer, new_size: u64) {
+        let buffer_info = vk::BufferCreateInfo::default()
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .size(new_size)
+            .usage(old_buffer.usage);
+
+        let mut alloc_info = vk_mem::AllocationCreateInfo::default();
+        alloc_info.required_flags = old_buffer.memory;
+
+        unsafe {
+            let new_buffer = self.allocator.create_buffer(&buffer_info, &alloc_info).unwrap();
+            self.allocator.destroy_buffer(old_buffer.buffer, &mut old_buffer.alloc);
         }
     }
 

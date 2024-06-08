@@ -1,6 +1,7 @@
 use std::mem;
 
 use ash::vk;
+use imgui::draw_list;
 
 pub trait Vertex {
     fn get_vertex_attribute_desc() -> Vec<vk::VertexInputAttributeDescription>;
@@ -23,11 +24,28 @@ pub struct MeshImGui {
     color: glm::Vec2,
 }
 
+impl MeshImGui {
+    pub fn create_mesh(draw_data: &imgui::DrawData) -> (Vec<imgui::DrawVert>, Vec<u16>) {
+        let mut vertices = Vec::with_capacity(draw_data.total_vtx_count as usize);
+        let mut indices = Vec::with_capacity(draw_data.total_idx_count as usize);
+
+        for draw_list in draw_data.draw_lists() {
+            vertices.extend_from_slice(draw_list.vtx_buffer());
+            indices.extend_from_slice(draw_list.idx_buffer());
+        }
+        (vertices, indices)
+    }
+}
+
 impl Vertex for MeshImGui {
     fn get_vertex_attribute_desc() -> Vec<vk::VertexInputAttributeDescription> {
         // TODO check so
         [
-            vk::VertexInputAttributeDescription::default().binding(0).location(0).format(vk::Format::R32G32_SFLOAT).offset(0),
+            vk::VertexInputAttributeDescription::default()
+                .binding(0)
+                .location(0)
+                .format(vk::Format::R32G32_SFLOAT)
+                .offset(0),
             vk::VertexInputAttributeDescription::default()
                 .binding(0)
                 .location(1)

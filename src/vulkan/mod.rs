@@ -1,17 +1,20 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    mem,
+    sync::{Arc, Mutex},
+};
 
 use ash::{
     khr::dynamic_rendering,
-    vk::{self, BlendFactor, BlendOp, DescriptorType, PrimitiveTopology, QueueFlags, ShaderStageFlags},
+    vk::{self, BlendFactor, BlendOp, DescriptorType, Extent2D, PrimitiveTopology, QueueFlags, ShaderStageFlags},
 };
 use builder::{ComputePipelineBuilder, PipelineBuilder};
 use glm::Mat4;
-use imgui::{FontConfig, FontSource};
+use imgui::{FontConfig, FontSource, TextureId};
 use imgui_rs_vulkan_renderer::Renderer;
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use loader::DebugLoaderEXT;
 use mesh::MeshImGui;
-use resource::{AllocatedImage, Resource};
+use resource::{AllocatedBuffer, AllocatedImage, Resource};
 use vk_mem::{Alloc, Allocator};
 use winit::{event_loop::EventLoop, window::WindowBuilder};
 
@@ -67,17 +70,27 @@ impl PushConstant for SkyBoxPushConstant {
 }
 
 pub struct ImguiContext {
-    pub set: vk::DescriptorSet,
-    pub layout: vk::DescriptorSetLayout,
     pub imgui: imgui::Context,
-    pub winit_platform: WinitPlatform,
+    pub platform: WinitPlatform,
 
-    pub imgui_pool: vk::DescriptorPool,
     pub pipeline: vk::Pipeline,
+    pub texture_atlas: AllocatedImage,
+
+    pub texture: imgui::Textures<vk::DescriptorSet>,
+
+    pub vertex_buffer: AllocatedBuffer,
+    pub index_buffer: AllocatedBuffer,
 }
 
 impl ImguiContext {
-    fn new(vulkan: VulkanContext, device: ash::Device, instance: ash::Instance) -> Self {
+    fn new(
+        window: &winit::window::Window,
+        device: Arc<ash::Device>,
+        instance: Arc<ash::Instance>,
+        resource: &mut Resource,
+        layout: vk::PipelineLayout,
+        swapchain_format: vk::Format,
+    ) -> Self {
         let mut imgui = imgui::Context::create();
         imgui.set_ini_filename(None);
 
@@ -90,53 +103,54 @@ impl ImguiContext {
             .add_font(&[FontSource::DefaultFontData { config: Some(FontConfig { size_pixels: font_size, ..FontConfig::default() }) }]);
 
         imgui.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
-        platform.attach_window(imgui.io_mut(), &vulkan.window, HiDpiMode::Rounded);
+        platform.attach_window(imgui.io_mut(), window, HiDpiMode::Rounded);
 
-        let pool_sizes = vec![
-            init::descriptor_pool_size(vk::DescriptorType::SAMPLER, 500),
-            init::descriptor_pool_size(vk::DescriptorType::COMBINED_IMAGE_SAMPLER, 500),
-            init::descriptor_pool_size(vk::DescriptorType::SAMPLED_IMAGE, 500),
-            init::descriptor_pool_size(vk::DescriptorType::STORAGE_IMAGE, 500),
-        ];
+        // let pool_sizes = vec![
+        //     init::descriptor_pool_size(vk::DescriptorType::SAMPLER, 500),
+        //     init::descriptor_pool_size(vk::DescriptorType::COMBINED_IMAGE_SAMPLER, 500),
+        //     init::descriptor_pool_size(vk::DescriptorType::SAMPLED_IMAGE, 500),
+        //     init::descriptor_pool_size(vk::DescriptorType::STORAGE_IMAGE, 500),
+        // ];
 
-        let descriptor_pool_info = vk::DescriptorPoolCreateInfo::default().pool_sizes(&pool_sizes).max_sets(500);
+        // let descriptor_pool_info = vk::DescriptorPoolCreateInfo::default().pool_sizes(&pool_sizes).max_sets(500);
 
-        let descriptor_pool = unsafe { device.create_descriptor_pool(&descriptor_pool_info, None).unwrap() };
+        // let descriptor_pool = unsafe { device.create_descriptor_pool(&descriptor_pool_info, None).unwrap() };
 
-        let bindings = vec![vk::DescriptorSetLayoutBinding::default()
-            .binding(0)
-            .descriptor_type(DescriptorType::COMBINED_IMAGE_SAMPLER)
-            .descriptor_count(1)
-            .stage_flags(ShaderStageFlags::FRAGMENT)];
+        // let bindings = vec![vk::DescriptorSetLayoutBinding::default()
+        //     .binding(0)
+        //     .descriptor_type(DescriptorType::COMBINED_IMAGE_SAMPLER)
+        //     .descriptor_count(1)
+        //     .stage_flags(ShaderStageFlags::FRAGMENT)];
 
         unsafe {
-            let layout = device
-                .create_descriptor_set_layout(&vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings), None)
-                .unwrap();
+            // let layout = device
+            //     .create_descriptor_set_layout(&vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings), None)
+            //     .unwrap();
 
-            let push_const_range =
-                [vk::PushConstantRange { stage_flags: ShaderStageFlags::VERTEX, offset: 0, size: std::mem::size_of::<Mat4>() as u32 }];
+            // let push_const_range =
+            //     [vk::PushConstantRange { stage_flags: ShaderStageFlags::VERTEX, offset: 0, size: std::mem::size_of::<Mat4>() as u32 }];
 
-            let layouts = vec![layout];
+            // let layouts = vec![layout];
 
-            let alloc_info = vk::DescriptorSetAllocateInfo::default()
-                .descriptor_pool(descriptor_pool)
-                .set_layouts(&layouts);
+            // let alloc_info = vk::DescriptorSetAllocateInfo::default()
+            //     .descriptor_pool(descriptor_pool)
+            //     .set_layouts(&layouts);
 
-            let set = vulkan.device.allocate_descriptor_sets(&alloc_info).unwrap()[0];
+            // let set = vulkan.device.allocate_descriptor_sets(&alloc_info).unwrap()[0];
 
             let fonts = imgui.fonts();
             let atlas_texture = fonts.build_rgba32_texture();
             //let image_info = vec![vk::DescriptorImageInfo::default()]
 
-            let pipeline_layout = device
-                .create_pipeline_layout(
-                    &vk::PipelineLayoutCreateInfo::default()
-                        .set_layouts(&layouts)
-                        .push_constant_ranges(&push_const_range),
-                    None,
-                )
-                .unwrap();
+            // let pipeline_layout = device
+            //     .create_pipeline_layout(
+            //         &vk::PipelineLayoutCreateInfo::default()
+            //             .set_layouts(&layout)
+            //             .push_constant_ranges(&[push_constant]),
+            //         None,
+            //     )
+            //     .unwrap();
+
             let blend_state = vk::PipelineColorBlendAttachmentState::default()
                 .color_write_mask(vk::ColorComponentFlags::R | vk::ColorComponentFlags::G | vk::ColorComponentFlags::B | vk::ColorComponentFlags::A)
                 .blend_enable(true)
@@ -151,17 +165,39 @@ impl ImguiContext {
             let shader_vert = util::create_shader(&device, "shaders/spv/imgui_shader.vert.spv".to_owned());
 
             let pipeline = PipelineBuilder::new()
-                .add_color_format(vulkan.swapchain.images[0].format)
-                .add_pipeline_layout(pipeline_layout)
+                .add_color_format(swapchain_format)
+                .add_pipeline_layout(layout)
                 .add_topology(PrimitiveTopology::TRIANGLE_LIST)
                 .add_blend(blend_state)
-                .build::<MeshImGui>(&vulkan, shader_vert, shader_frag);
+                .build::<MeshImGui>(&device, shader_vert, shader_frag);
 
             device.destroy_shader_module(shader_frag, None);
             device.destroy_shader_module(shader_vert, None);
 
-            Self { set: todo!(), layout, imgui, winit_platform: todo!(), imgui_pool: descriptor_pool, pipeline }
-        };
+            let fonts_texture = {
+                let fonts = imgui.fonts();
+                let atlas_texture = fonts.build_rgba32_texture();
+
+                resource.create_texture_image(Extent2D { width: atlas_texture.width, height: atlas_texture.height }, atlas_texture.data, true)
+            };
+
+            let fonts = imgui.fonts();
+            fonts.tex_id = TextureId::from(usize::MAX);
+
+            let texture = imgui::Textures::new();
+
+            Self { imgui, platform, pipeline, texture_atlas: fonts_texture, texture }
+        }
+    }
+
+    fn draw(&mut self, cmd: vk::CommandBuffer) {
+        let draw_data = self.imgui.render();
+
+        let (vertices, indices) = MeshImGui::create_mesh(draw_data);
+
+        if vertices.len() > self.vertex_buffer.size as usize * mem::size_of::<MeshImGui>() {
+            // TODO create a new buffer at that place
+        }
     }
 }
 
@@ -173,6 +209,7 @@ pub struct Swapchain {
     pub image_index: u32,
 }
 
+///Initialization all of Vulkan and has some default syncing and submitting
 pub struct VulkanContext {
     pub entry: Arc<ash::Entry>,
     pub instance: Arc<ash::Instance>,
@@ -211,12 +248,14 @@ pub struct VulkanContext {
     pub current_frame: usize,
 
     pub max_frames_in_flight: usize,
+
+    pub imgui: Option<ImguiContext>,
 }
 
 impl VulkanContext {
     const APPLICATION_NAME: &'static str = "Vulkan App";
 
-    pub fn new(event_loop: &EventLoop<()>, max_frames_in_flight: usize) -> Self {
+    pub fn new(event_loop: &EventLoop<()>, max_frames_in_flight: usize, is_imgui: bool) -> Self {
         unsafe {
             // should remove all must do things from here or keep it here and move the not must do things to fn main
 
@@ -266,7 +305,7 @@ impl VulkanContext {
 
             let debug_loader_ext = DebugLoaderEXT::new(instance.clone(), device.clone());
 
-            let resources = Resource::new(instance.clone(), device.clone(), graphic, allocator.clone(), debug_loader_ext.clone());
+            let mut resources = Resource::new(instance.clone(), device.clone(), graphic, allocator.clone(), debug_loader_ext.clone());
 
             let push_vec = vec![vk::PushConstantRange::default()
                 .size(128)
@@ -287,7 +326,7 @@ impl VulkanContext {
             let mut cmds = vec![];
             let mut pools = vec![];
 
-            for i in 0..max_frames_in_flight {
+            for _ in 0..max_frames_in_flight {
                 present_done.push(util::create_fence(&device));
                 aquired_semp.push(util::create_semphore(&device));
                 render_done.push(util::create_semphore(&device));
@@ -296,6 +335,20 @@ impl VulkanContext {
                 cmds.push(util::create_cmd(&device, main_pool));
                 pools.push(main_pool);
             }
+            let imgui = {
+                if is_imgui {
+                    Some(ImguiContext::new(
+                        &window,
+                        device.clone(),
+                        instance.clone(),
+                        &mut resources,
+                        pipeline_layout,
+                        swapchain_images[0].format,
+                    ))
+                } else {
+                    None
+                }
+            };
 
             Self {
                 entry,
@@ -329,6 +382,7 @@ impl VulkanContext {
                 swapchain: Swapchain { surface, swap: swapchain, images: swapchain_images, depth: depth_image, image_index: 0 },
                 current_frame: 0,
                 max_frames_in_flight,
+                imgui,
             }
         }
     }

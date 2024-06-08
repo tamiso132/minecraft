@@ -341,7 +341,7 @@ impl PipelineBuilder {
         self
     }
 
-    pub fn build<Ver: Vertex>(self, vulkan: &VulkanContext, vertex_module: vk::ShaderModule, fragment_module: vk::ShaderModule) -> vk::Pipeline {
+    pub fn build<Ver: Vertex>(self, device: &ash::Device, vertex_module: vk::ShaderModule, fragment_module: vk::ShaderModule) -> vk::Pipeline {
         let entry_point_name = CString::new("main").unwrap();
 
         let shader_states_infos = [
@@ -442,8 +442,7 @@ impl PipelineBuilder {
         let pipeline_info = pipeline_info.push_next(&mut rendering_info);
 
         unsafe {
-            vulkan
-                .device
+            device
                 .create_graphics_pipelines(vk::PipelineCache::null(), std::slice::from_ref(&pipeline_info), None)
                 .unwrap()[0]
         }

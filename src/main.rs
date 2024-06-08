@@ -21,6 +21,7 @@ extern crate vk_mem;
 
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
+/// There should only be application relevant information in these functions
 struct Application {
     vulkan: VulkanContext,
     compute: vk::Pipeline,
@@ -31,7 +32,7 @@ struct Application {
 
 impl Application {
     fn new(event_loop: &EventLoop<()>) -> Self {
-        let mut vulkan = VulkanContext::new(event_loop, MAX_FRAMES_IN_FLIGHT);
+        let mut vulkan = VulkanContext::new(event_loop, MAX_FRAMES_IN_FLIGHT, true);
 
         let comp_skybox = util::create_shader(&vulkan.device, "shaders/spv/skybox.comp.spv".to_owned());
 
