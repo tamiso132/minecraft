@@ -149,7 +149,7 @@ impl ImguiContext {
             let shader_vert = util::create_shader(&device, "shaders/spv/imgui_shader.vert.spv".to_owned());
 
             let pipeline = PipelineBuilder::new()
-                .add_color_format(vulkan.swapchain.swapchain_images[0].format)
+                .add_color_format(vulkan.swapchain.images[0].format)
                 .add_pipeline_layout(pipeline_layout)
                 .add_topology(PrimitiveTopology::TRIANGLE_LIST)
                 .add_blend(blend_state)
@@ -165,30 +165,29 @@ impl ImguiContext {
 
 pub struct Swapchain {
     pub surface: vk::SurfaceKHR,
-    pub swapchain: vk::SwapchainKHR,
-    pub swapchain_images: Vec<AllocatedImage>,
-    pub depth_image: AllocatedImage,
-    pub max_swapchain_images: u32,
-    pub swapchain_index: u32,
+    pub swap: vk::SwapchainKHR,
+    pub images: Vec<AllocatedImage>,
+    pub depth: AllocatedImage,
+    pub image_index: u32,
 }
 
-pub struct VulkanContext<'a> {
-    pub entry: ash::Entry,
+pub struct VulkanContext {
+    pub entry: Arc<ash::Entry>,
     pub instance: Arc<ash::Instance>,
-    pub device: ash::Device,
+    pub device: Arc<ash::Device>,
     pub physical: vk::PhysicalDevice,
     /// Don't forget to clean this one up
     pub allocator: Arc<vk_mem::Allocator>,
 
     pub window_extent: vk::Extent2D,
-    pub window: winit::window::Window,
+    pub window: Arc<winit::window::Window>,
 
     pub swapchain: Swapchain,
 
     pub main_cmd: vk::CommandBuffer,
     pub main_pool: vk::CommandPool,
 
-    pub graphic_queue: TKQueue,
+    pub graphic: TKQueue,
     pub transfer: TKQueue,
 
     pub debug_messenger: vk::DebugUtilsMessengerEXT,
@@ -197,38 +196,43 @@ pub struct VulkanContext<'a> {
     pub surface_loader: ash::khr::surface::Instance,
     pub debug_loader: Option<ash::ext::debug_utils::Instance>,
 
-    pub debug_loader_ext: DebugLoaderEXT<'a>,
+    pub debug_loader_ext: DebugLoaderEXT,
 
     pub pipeline_layout: vk::PipelineLayout,
-    pub resources: Resource<'a>,
+    pub resources: Resource,
 
-    pub queue_is_done_fen: vk::Fence,
+    pub queue_done: Vec<vk::Fence>,
 
-    pub image_aquired_semp: vk::Semaphore,
-    pub render_is_done: vk::Semaphore,
+    pub aquired_semp: Vec<vk::Semaphore>,
+    pub render_done_signal: Vec<vk::Semaphore>,
+
+    pub current_frame: usize,
+
+    pub max_frames_in_flight: usize,
 }
 
-impl<'a> VulkanContext<'a> {
+impl VulkanContext {
     const APPLICATION_NAME: &'static str = "Vulkan App";
 
-    pub fn new() -> Self {
+    pub fn new(event_loop: &EventLoop<()>, max_frames_in_flight: usize) -> Self {
         unsafe {
             // should remove all must do things from here or keep it here and move the not must do things to fn main
 
-            let event_loop = EventLoop::new().unwrap();
-            let window = WindowBuilder::new()
-                .with_title(Self::APPLICATION_NAME)
-                .with_inner_size(winit::dpi::LogicalSize::new(f64::from(1920.0), f64::from(1080.0)))
-                .build(&event_loop)
-                .unwrap();
+            let window = Arc::new(
+                WindowBuilder::new()
+                    .with_title(Self::APPLICATION_NAME)
+                    .with_inner_size(winit::dpi::LogicalSize::new(f64::from(1920.0), f64::from(1080.0)))
+                    .build(event_loop)
+                    .unwrap(),
+            );
+
             let (instance, entry, debug_callback, debug_loader) = builder::InstanceBuilder::new()
                 .enable_debug()
                 .set_required_version(1, 3, 0)
                 .set_app_name("Vulkan App")
                 .set_xlib_ext()
                 .build();
-
-            let (device, physical, graphic_queue, transfer_queue) = builder::DeviceBuilder::new()
+            let (device, physical, graphic, transfer) = builder::DeviceBuilder::new()
                 .ext_dynamic_rendering()
                 .ext_image_cube_array()
                 .ext_sampler_anisotropy()
@@ -237,6 +241,8 @@ impl<'a> VulkanContext<'a> {
                 .build(&instance);
 
             let instance = Arc::new(instance);
+            let entry = Arc::new(entry);
+            let device = Arc::new(device);
 
             /*Create Allocator */
             let mut allocator_info = vk_mem::AllocatorCreateInfo::new(&instance, &device, physical);
@@ -246,30 +252,36 @@ impl<'a> VulkanContext<'a> {
 
             let mut swapchain_images = vec![];
             let mut depth_image = AllocatedImage::default();
+            let window_extent = vk::Extent2D { width: window.inner_size().width, height: window.inner_size().height };
 
             let (swapchain_loader, swapchain, surface_loader, surface) =
-                builder::SwapchainBuilder::new(&entry, &device, &instance, physical, &allocator, &window)
+                builder::SwapchainBuilder::new(entry.clone(), device.clone(), instance.clone(), physical, allocator.clone(), window.clone())
+                    .add_extent(window_extent)
                     .select_image_format(vk::Format::B8G8R8A8_SRGB)
                     .select_sharing_mode(vk::SharingMode::EXCLUSIVE)
                     .select_presentation_mode(vk::PresentModeKHR::MAILBOX)
                     .build(&mut swapchain_images, &mut depth_image);
 
-            let window_extent = vk::Extent2D { width: window.inner_size().width, height: window.inner_size().height };
+            let debug_loader_ext = DebugLoaderEXT::new(instance.clone(), device.clone());
 
-            let debug_loader_ext = DebugLoaderEXT::new(&instance, &device);
-
-            let main_pool = util::create_pool(&device, graphic_queue.get_family());
+            let main_pool = util::create_pool(&device, graphic.get_family());
 
             let main_cmd = util::create_cmd(&device, main_pool);
 
-            let mut resources = Resource::new(&instance, &device, physical, main_cmd, graphic_queue, &allocator, debug_loader_ext);
+            let resources = Resource::new(
+                instance.clone(),
+                device.clone(),
+                physical,
+                main_cmd,
+                graphic,
+                allocator.clone(),
+                debug_loader_ext.clone(),
+            );
 
-            /*After here is basically non general code but the only relevant code we need to look at */
-            let push_constant = SkyBoxPushConstant::new();
+            let push_vec = vec![vk::PushConstantRange::default()
+                .size(128)
+                .stage_flags(ShaderStageFlags::VERTEX | ShaderStageFlags::FRAGMENT | ShaderStageFlags::COMPUTE)];
 
-            let comp_skybox = util::create_shader(&device, "shaders/spv/skybox.comp.spv".to_owned());
-
-            let push_vec = vec![push_constant.push_constant_range()];
             let layout_vec = vec![resources.layout];
 
             let vk_pipeline = vk::PipelineLayoutCreateInfo::default()
@@ -279,171 +291,89 @@ impl<'a> VulkanContext<'a> {
 
             let pipeline_layout = device.create_pipeline_layout(&vk_pipeline, None).unwrap();
 
-            let compute_pipeline = ComputePipelineBuilder::new(comp_skybox).build(&device, pipeline_layout);
+            let mut present_done = vec![];
+            let mut aquired_semp = vec![];
+            let mut render_done = vec![];
 
-            let mut images = vec![];
-
-            util::begin_cmd(&device, main_cmd);
-
-            /*Should be outside of this initilize */
-            for i in 0..swapchain_images.len() {
-                let name = format!("{}_{}", "compute_skybox", i);
-                images.push(resources.create_storage_image(
-                    window_extent,
-                    4,
-                    vk::MemoryPropertyFlags::DEVICE_LOCAL,
-                    vk::Format::R8G8B8A8_UNORM,
-                    vk::ImageUsageFlags::TRANSFER_SRC
-                        | vk::ImageUsageFlags::TRANSFER_DST
-                        | vk::ImageUsageFlags::STORAGE
-                        | vk::ImageUsageFlags::COLOR_ATTACHMENT,
-                    std::ffi::CString::new(name).unwrap(),
-                ));
-
-                util::transition_image_general(&device, main_cmd, images.last().unwrap().image);
+            for i in 0..max_frames_in_flight {
+                present_done.push(util::create_fence(&device));
+                aquired_semp.push(util::create_semphore(&device));
+                render_done.push(util::create_semphore(&device));
             }
-
-            util::end_cmd_and_submit(&device, main_cmd, graphic_queue, vec![], vec![], vk::Fence::null());
-            device.device_wait_idle().unwrap();
 
             Self {
                 entry,
                 instance,
                 allocator,
                 window,
-                device: device.clone(),
+                device,
                 window_extent,
-                physical: Default::default(),
+                physical,
 
-                main_cmd: Default::default(),
-                main_pool: Default::default(),
+                main_cmd,
+                main_pool,
 
-                graphic_queue: Default::default(),
-                transfer: Default::default(),
+                graphic,
+                transfer,
 
                 swapchain_loader,
                 surface_loader,
 
-                debug_messenger: Default::default(),
-                debug_loader: None,
+                debug_messenger: debug_callback,
+                debug_loader: Some(debug_loader),
 
                 debug_loader_ext,
-                pipeline_layout: vk::PipelineLayout::null(),
+                pipeline_layout,
 
                 resources,
-                queue_is_done_fen: util::create_fence(&device),
-                image_aquired_semp: util::create_semphore(&device),
-                render_is_done: util::create_semphore(&device),
+                queue_done: present_done,
+                aquired_semp,
+                render_done_signal: render_done,
 
-                swapchain: Swapchain {
-                    surface: Default::default(),
-                    swapchain: Default::default(),
-                    swapchain_images: Default::default(),
-                    depth_image: Default::default(),
-                    max_swapchain_images: 0,
-                    swapchain_index: 0,
-                },
+                swapchain: Swapchain { surface, swap: swapchain, images: swapchain_images, depth: depth_image, image_index: 0 },
+                current_frame: 0,
+                max_frames_in_flight,
             }
         }
     }
+    // TODO, fix default syncing things
+    pub fn prepare_frame(&mut self) {
+        unsafe {
+            self.device.wait_for_fences(&self.queue_done, true, u64::MAX - 1);
 
-    pub fn run(&self) {
-        event_loop
-            .run(move |event, _control_flow| match event {
-                Event::WindowEvent { event, .. } => match event {
-                    WindowEvent::CloseRequested => {
-                        _control_flow.exit();
-                    }
-                    _ => {}
-                },
-                _ => {
-                    let descriptor_sets = vec![self.resources.set];
+            let signal_image_aquired = self.aquired_semp[self.current_frame];
 
-                    let device = self.device.clone();
-                    let cmd = self.main_cmd.clone();
+            (self.swapchain.image_index, _) = self
+                .swapchain_loader
+                .acquire_next_image(self.swapchain.swap, 100000, signal_image_aquired, vk::Fence::null())
+                .unwrap();
 
-                    let (swapchain_index, _) = self.
-                        .swapchain_loader
-                        .acquire_next_image(self.swapchain.swapchain, 100000, self.image_aquired_semp, vk::Fence::null())
-                        .unwrap();
+            util::begin_cmd(&self.device, self.main_cmd);
+        }
+    }
 
-                    let swapchain_image = self.swapchain.swapchain_images[swapchain_index as usize].image.clone();
-                    unsafe {
-                    device.reset_command_buffer(cmd, vk::CommandBufferResetFlags::empty()).unwrap();
+    // TODO, fix default syncing and submitting
+    pub fn end_frame_and_submit(&mut self) {
+        util::transition_image_present(&self.device, self.main_cmd, self.swapchain.images[self.swapchain.image_index as usize].image);
 
-                    device
-                        .begin_command_buffer(cmd, &vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT))
-                        .expect("failed to begin cmd");
+        util::end_cmd_and_submit(
+            &self.device,
+            self.main_cmd,
+            self.graphic,
+            vec![self.render_done_signal[self.current_frame]],
+            vec![self.aquired_semp[self.current_frame]],
+            self.queue_done[self.current_frame],
+        );
+        util::present_submit(
+            &self.swapchain_loader,
+            self.graphic,
+            self.swapchain.swap,
+            self.swapchain.image_index,
+            vec![self.render_done_signal[self.current_frame]],
+        );
 
-                    device.cmd_bind_descriptor_sets(
-                        cmd,
-                        vk::PipelineBindPoint::COMPUTE,
-                        self.pipeline_layout,
-                        0,
-                        &descriptor_sets,
-                        &vec![],
-                    );
-
-                    device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, pipeline);
-
-                    device.cmd_push_constants(
-                        cmd,
-                        self.pipeline_layout,
-                        vk::ShaderStageFlags::COMPUTE,
-                        0,
-                        std::slice::from_raw_parts(&push_constant as *const _ as *const u8, std::mem::size_of::<SkyBoxPushConstant>()),
-                    );
-
-                    device.cmd_dispatch(cmd, vulkan_context.window_extent.width / 16, vulkan_context.window_extent.height / 16, 1);
-
-                    util::copy_to_image_from_image(
-                        &vulkan_context,
-                        &images[0],
-                        &vulkan_context.swapchain.swapchain_images[swapchain_index as usize],
-                        vulkan_context.window_extent,
-                    );
-
-                    util::transition_image_color(&device, cmd, swapchain_image);
-
-                    // fragment rendering will happen here
-
-                    util::transition_image_present(&device, cmd, swapchain_image);
-
-                    vulkan_context.device.end_command_buffer(vulkan_context.main_cmd).unwrap();
-
-                    let aquire_is_ready = vec![vulkan_context.image_aquired_semp];
-                    let render_is_done = vec![vulkan_context.render_is_done];
-                    let swapchain_indices = vec![swapchain_index];
-                    let wait_mask = vec![vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
-                    let cmds = vec![vulkan_context.main_cmd];
-                    let swapchain = vec![vulkan_context.swapchain.swapchain];
-
-                    let submit_info = vec![vk::SubmitInfo::default()
-                        .command_buffers(&cmds)
-                        .wait_semaphores(&aquire_is_ready)
-                        .signal_semaphores(&render_is_done)
-                        .wait_dst_stage_mask(&wait_mask)];
-
-                    let present_info = vk::PresentInfoKHR::default()
-                        .swapchains(&swapchain)
-                        .wait_semaphores(&render_is_done)
-                        .image_indices(&swapchain_indices);
-
-                    vulkan_context
-                        .device
-                        .queue_submit(vulkan_context.graphic_queue.queue, &submit_info, vk::Fence::null())
-                        .unwrap();
-
-                    vulkan_context
-                        .swapchain_loader
-                        .queue_present(vulkan_context.graphic_queue.queue, &present_info)
-                        .unwrap();
-
-                    vulkan_context.device.device_wait_idle().unwrap();
-                }
-                }
-            })
-            .unwrap();
+        self.current_frame += (self.current_frame + 1) % self.max_frames_in_flight;
+        self.swapchain.image_index += (self.swapchain.image_index + 1) % self.swapchain.images.len() as u32;
     }
 }
 #[derive(Debug, Clone, Copy)]

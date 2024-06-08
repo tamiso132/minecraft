@@ -12,15 +12,15 @@ use std::{
 // Define the type alias for the Vulkan function pointer type
 
 #[derive(Clone)]
-pub struct DebugLoaderEXT<'a> {
-    instance: &'a ash::Instance,
-    device: &'a ash::Device,
+pub struct DebugLoaderEXT {
+    instance: Arc<ash::Instance>,
+    device: Arc<ash::Device>,
 
     set_debug_util_object_name_ext: vk::PFN_vkSetDebugUtilsObjectNameEXT,
 }
 
-impl<'a> DebugLoaderEXT<'a> {
-    pub fn new(instance: &'a ash::Instance, device: &'a ash::Device) -> Self {
+impl DebugLoaderEXT {
+    pub fn new(instance: Arc<ash::Instance>, device: Arc<ash::Device>) -> Self {
         let func_name = CString::new("vkSetDebugUtilsObjectNameEXT").unwrap();
         unsafe {
             let set_debug_util_object_name_ext: vk::PFN_vkSetDebugUtilsObjectNameEXT =

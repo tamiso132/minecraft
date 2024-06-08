@@ -10,10 +10,9 @@ use super::{init, loader::DebugLoaderEXT, TKQueue};
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Binding {
-    Uniform,
-    Storage,
-    Texture,
     CombinedImage,
+    StorageImage,
+    StorageBuffer,
 }
 
 #[repr(u32)]
@@ -73,10 +72,10 @@ pub struct AllocatedBuffer {
     pub size: u64,
 }
 
-pub struct Resource<'a> {
-    device: &'a ash::Device,
-    instance: &'a ash::Instance,
-    allocator: &'a vk_mem::Allocator,
+pub struct Resource {
+    device: Arc<ash::Device>,
+    instance: Arc<ash::Instance>,
+    allocator: Arc<vk_mem::Allocator>,
 
     pub layout: vk::DescriptorSetLayout,
     pub set: vk::DescriptorSet,
@@ -89,16 +88,16 @@ pub struct Resource<'a> {
     counter: [u32; 3],
 }
 
-impl<'a> Resource<'a> {
+impl Resource {
     const MAX_BINDINGS: u32 = 1024;
     // Combined, Storage Image, Storage Buffer
     pub unsafe fn new(
-        instance: &'a ash::Instance,
-        device: &'a ash::Device,
+        instance: Arc<ash::Instance>,
+        device: Arc<ash::Device>,
         physical: vk::PhysicalDevice,
         cmd: vk::CommandBuffer,
         graphic_queue: TKQueue,
-        allocator: &'a vk_mem::Allocator,
+        allocator: Arc<vk_mem::Allocator>,
         debug_loader_ext: DebugLoaderEXT,
     ) -> Self {
         let pool_sizes = vec![
@@ -115,7 +114,7 @@ impl<'a> Resource<'a> {
         let descriptor_pool = device.create_descriptor_pool(&descriptor_pool_info, None).unwrap();
 
         let layout = util::create_bindless_layout(
-            device,
+            &device,
             0,
             vec![
                 DescriptorType::COMBINED_IMAGE_SAMPLER,
@@ -177,9 +176,10 @@ impl<'a> Resource<'a> {
         };
 
         let (descriptor_type, binding) = if buffer_type == BufferType::Storage {
-            (vk::DescriptorType::STORAGE_BUFFER, Binding::Storage)
+            (vk::DescriptorType::STORAGE_BUFFER, Binding::StorageBuffer)
         } else {
-            (vk::DescriptorType::UNIFORM_BUFFER, Binding::Uniform)
+            // TODO, add uniform
+            (vk::DescriptorType::UNIFORM_BUFFER, Binding::StorageBuffer)
         };
 
         alloc_info.required_flags = memory_property;
@@ -201,18 +201,18 @@ impl<'a> Resource<'a> {
                 .dst_set(self.set)
                 .descriptor_count(1)
                 .buffer_info(&desc)
-                .dst_array_element(self.buffer_counter)
+                .dst_array_element(self.counter[Binding::StorageImage as usize])
                 .dst_binding(1);
 
             self.device.update_descriptor_sets(&[write], &vec![]);
-            self.buffer_counter += 1;
+            self.counter[Binding::StorageImage as usize] += 1;
 
             AllocatedBuffer {
                 buffer: buffer.0,
                 alloc: buffer.1,
                 buffer_type,
                 size: buffer_info.size,
-                index: self.buffer_counter - 1,
+                index: self.counter[Binding::StorageImage as usize] - 1,
                 descriptor_type,
             }
         }
@@ -247,8 +247,6 @@ impl<'a> Resource<'a> {
     // binds the image to the descriptor layout so it can be accessed through the shader
     fn bind_image(&mut self, image: &mut AllocatedImage, binding: Binding) -> u32 {
         let binding = binding as usize;
-
-        assert!(binding >= self.counter.len(), "Binding is not valid");
 
         let descriptor_image_info = vec![vk::DescriptorImageInfo::default()
             .image_layout(vk::ImageLayout::GENERAL)
@@ -344,7 +342,7 @@ impl<'a> Resource<'a> {
                 .set_debug_util_object_name_ext(vk::DebugUtilsObjectNameInfoEXT::default().object_handle(image.0).object_name(&name))
                 .unwrap();
             // TODO, automatically transfer it to general layout
-            self.bind_image(&mut alloc_image, Binding::Storage);
+            self.bind_image(&mut alloc_image, Binding::StorageImage);
 
             alloc_image
         }

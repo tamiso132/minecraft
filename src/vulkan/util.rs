@@ -1,8 +1,11 @@
 use std::{ffi::CString, fs::File, io::Read, sync::Arc};
 
-use ash::vk::{
-    self, AccessFlags, BufferImageCopy, CommandBufferLevel, CommandPool, DependencyFlags, ImageAspectFlags, ImageLayout, Offset3D, ShaderStageFlags,
-    SubmitInfo,
+use ash::{
+    khr::swapchain,
+    vk::{
+        self, AccessFlags, BufferImageCopy, CommandBufferLevel, CommandPool, DependencyFlags, ImageAspectFlags, ImageLayout, Offset3D,
+        ShaderStageFlags, SubmitInfo,
+    },
 };
 
 use crate::vulkan::{TKQueue, VulkanContext};
@@ -162,6 +165,8 @@ pub fn create_shader_ext(
     shader
 }
 
+// TODO, will have to change their image layout, in the struct, when I transition images
+
 pub fn transition_image_present(device: &ash::Device, cmd: vk::CommandBuffer, image: vk::Image) {
     let barrier = vec![init::image_barrier_info(
         image,
@@ -206,6 +211,7 @@ pub fn transition_image_color(device: &ash::Device, cmd: vk::CommandBuffer, imag
 
 pub fn begin_cmd(device: &ash::Device, cmd: vk::CommandBuffer) {
     unsafe {
+        device.reset_command_buffer(cmd, vk::CommandBufferResetFlags::empty()).unwrap();
         device
             .begin_command_buffer(cmd, &vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT))
             .unwrap()
@@ -216,7 +222,7 @@ pub fn end_cmd_and_submit(
     device: &ash::Device,
     cmd: vk::CommandBuffer,
     queue: TKQueue,
-    done_semp: Vec<vk::Semaphore>,
+    signal_done: Vec<vk::Semaphore>,
     wait_semp: Vec<vk::Semaphore>,
     done_fence: vk::Fence,
 ) {
@@ -225,10 +231,30 @@ pub fn end_cmd_and_submit(
         let cmds = vec![cmd];
         let submit_info = SubmitInfo::default()
             .command_buffers(&cmds)
-            .signal_semaphores(&done_semp)
+            .signal_semaphores(&signal_done)
             .wait_semaphores(&wait_semp);
 
         device.queue_submit(queue.queue, &[submit_info], done_fence);
+    };
+}
+
+pub fn present_submit(
+    swapchain_loader: &swapchain::Device,
+    graphic: TKQueue,
+    swapchain: vk::SwapchainKHR,
+    swapchain_index: u32,
+    wait_semp: Vec<vk::Semaphore>,
+) {
+    unsafe {
+        swapchain_loader
+            .queue_present(
+                graphic.queue,
+                &vk::PresentInfoKHR::default()
+                    .swapchains(&[swapchain])
+                    .wait_semaphores(&wait_semp)
+                    .image_indices(&[swapchain_index as u32]),
+            )
+            .unwrap()
     };
 }
 
@@ -246,7 +272,13 @@ pub fn copy_to_image_from_buffer(device: &ash::Device, cmd: vk::CommandBuffer, d
     }
 }
 // TODO, make this more general to use, Only works for general to color attachment but easy fix
-pub fn copy_to_image_from_image(context: &VulkanContext, src_image: &AllocatedImage, dst_image: &AllocatedImage, extent: vk::Extent2D) {
+pub fn copy_to_image_from_image(
+    device: &ash::Device,
+    cmd: vk::CommandBuffer,
+    src_image: &AllocatedImage,
+    dst_image: &AllocatedImage,
+    extent: vk::Extent2D,
+) {
     let sub_resource = init::image_subresource_info(vk::ImageAspectFlags::COLOR);
 
     let old_src_layout = vk::ImageLayout::GENERAL;
@@ -268,8 +300,8 @@ pub fn copy_to_image_from_image(context: &VulkanContext, src_image: &AllocatedIm
         .dst_access_mask(AccessFlags::TRANSFER_WRITE);
 
     unsafe {
-        context.device.cmd_pipeline_barrier(
-            context.main_cmd,
+        device.cmd_pipeline_barrier(
+            cmd,
             vk::PipelineStageFlags::FRAGMENT_SHADER,
             vk::PipelineStageFlags::TRANSFER,
             DependencyFlags::empty(),
@@ -278,8 +310,8 @@ pub fn copy_to_image_from_image(context: &VulkanContext, src_image: &AllocatedIm
             &vec![src_barrier],
         );
 
-        context.device.cmd_pipeline_barrier(
-            context.main_cmd,
+        device.cmd_pipeline_barrier(
+            cmd,
             vk::PipelineStageFlags::TOP_OF_PIPE,
             vk::PipelineStageFlags::TRANSFER,
             DependencyFlags::empty(),
@@ -304,8 +336,8 @@ pub fn copy_to_image_from_image(context: &VulkanContext, src_image: &AllocatedIm
             .src_offsets(offsets)
             .src_subresource(sub_resource_layer);
 
-        context.device.cmd_blit_image(
-            context.main_cmd,
+        device.cmd_blit_image(
+            cmd,
             src_image.image,
             vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
             dst_image.image,
@@ -320,8 +352,8 @@ pub fn copy_to_image_from_image(context: &VulkanContext, src_image: &AllocatedIm
             .src_access_mask(AccessFlags::TRANSFER_READ)
             .dst_access_mask(AccessFlags::SHADER_WRITE);
 
-        context.device.cmd_pipeline_barrier(
-            context.main_cmd,
+        device.cmd_pipeline_barrier(
+            cmd,
             vk::PipelineStageFlags::TRANSFER,
             vk::PipelineStageFlags::COMPUTE_SHADER,
             DependencyFlags::empty(),

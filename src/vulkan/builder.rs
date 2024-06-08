@@ -450,10 +450,10 @@ impl PipelineBuilder {
     }
 }
 
-pub struct SwapchainBuilder<'a> {
-    instance: &'a ash::Instance,
-    device: &'a ash::Device,
-    allocator: &'a vk_mem::Allocator,
+pub struct SwapchainBuilder {
+    instance: Arc<ash::Instance>,
+    device: Arc<ash::Device>,
+    allocator: Arc<vk_mem::Allocator>,
     physical: vk::PhysicalDevice,
 
     present_mode: vk::PresentModeKHR,
@@ -471,24 +471,24 @@ pub struct SwapchainBuilder<'a> {
     extent: Extent2D,
 }
 
-impl<'a> SwapchainBuilder<'a> {
+impl SwapchainBuilder {
     pub unsafe fn new(
-        entry: &'a ash::Entry,
-        device: &'a ash::Device,
-        instance: &'a ash::Instance,
+        entry: Arc<ash::Entry>,
+        device: Arc<ash::Device>,
+        instance: Arc<ash::Instance>,
         physical: vk::PhysicalDevice,
-        allocator: &'a vk_mem::Allocator,
-        window: &winit::window::Window,
-    ) -> SwapchainBuilder<'a> {
+        allocator: Arc<vk_mem::Allocator>,
+        window: Arc<winit::window::Window>,
+    ) -> SwapchainBuilder {
         let surface = ash_window::create_surface(
-            entry,
-            instance,
+            entry.as_ref(),
+            instance.as_ref(),
             window.display_handle().unwrap().as_raw(),
             window.window_handle().unwrap().as_raw(),
             None,
         )
         .expect("surface failed");
-        let surface_loader = ash::khr::surface::Instance::new(entry, instance);
+        let surface_loader = ash::khr::surface::Instance::new(&entry, &instance);
 
         let surface_capabilities = surface_loader.get_physical_device_surface_capabilities(physical, surface).unwrap();
 

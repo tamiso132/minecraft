@@ -5,11 +5,12 @@ use std::ffi::CString;
 use ash::vk;
 use vulkan::{
     builder::{self, ComputePipelineBuilder},
+    resource::AllocatedImage,
     util, PushConstant, SkyBoxPushConstant, VulkanContext,
 };
 use winit::{
     event::{Event, WindowEvent},
-    event_loop::EventLoop,
+    event_loop::{EventLoop, EventLoopWindowTarget},
     window::WindowBuilder,
 };
 
@@ -18,9 +19,112 @@ mod vulkan;
 extern crate nalgebra_glm as glm;
 extern crate vk_mem;
 
-fn main() {
-    println!("Hello, world!");
-    unsafe {
-        
+pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
+
+struct Application {
+    vulkan: VulkanContext,
+    compute: vk::Pipeline,
+    compute_images: Vec<AllocatedImage>,
+
+    push_constant: SkyBoxPushConstant,
+}
+
+impl Application {
+    fn new(event_loop: &EventLoop<()>) -> Self {
+        let mut vulkan = VulkanContext::new(event_loop, MAX_FRAMES_IN_FLIGHT);
+
+        let comp_skybox = util::create_shader(&vulkan.device, "shaders/spv/skybox.comp.spv".to_owned());
+
+        let compute = ComputePipelineBuilder::new(comp_skybox).build(&vulkan.device, vulkan.pipeline_layout);
+
+        let mut images = vec![];
+
+        util::begin_cmd(&vulkan.device, vulkan.main_cmd);
+
+        /*Should be outside of this initilize */
+        for i in 0..MAX_FRAMES_IN_FLIGHT {
+            let name = format!("{}_{}", "compute_skybox", i);
+            images.push(vulkan.resources.create_storage_image(
+                vulkan.window_extent,
+                4,
+                vk::MemoryPropertyFlags::DEVICE_LOCAL,
+                vk::Format::R8G8B8A8_UNORM,
+                vk::ImageUsageFlags::TRANSFER_SRC
+                    | vk::ImageUsageFlags::TRANSFER_DST
+                    | vk::ImageUsageFlags::STORAGE
+                    | vk::ImageUsageFlags::COLOR_ATTACHMENT,
+                std::ffi::CString::new(name).unwrap(),
+            ));
+
+            util::transition_image_general(&vulkan.device, vulkan.main_cmd, images.last().unwrap().image);
+        }
+
+        util::end_cmd_and_submit(&vulkan.device, vulkan.main_cmd, vulkan.graphic, vec![], vec![], vk::Fence::null());
+        unsafe { vulkan.device.device_wait_idle().unwrap() };
+
+        Self { vulkan, compute, compute_images: images, push_constant: SkyBoxPushConstant::new() }
     }
+
+    unsafe fn run(&mut self) {
+        self.vulkan.prepare_frame();
+
+        let device = &self.vulkan.device;
+        let cmd = self.vulkan.main_cmd;
+        let frame_index = self.vulkan.current_frame;
+        let swapchain_index = self.vulkan.swapchain.image_index;
+
+        device.cmd_bind_descriptor_sets(
+            cmd,
+            vk::PipelineBindPoint::COMPUTE,
+            self.vulkan.pipeline_layout,
+            0,
+            &[self.vulkan.resources.set],
+            &vec![],
+        );
+
+        device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, self.compute);
+
+        device.cmd_push_constants(
+            cmd,
+            self.vulkan.pipeline_layout,
+            vk::ShaderStageFlags::COMPUTE | vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::VERTEX,
+            0,
+            std::slice::from_raw_parts(&self.push_constant as *const _ as *const u8, std::mem::size_of::<SkyBoxPushConstant>()),
+        );
+
+        device.cmd_dispatch(cmd, self.vulkan.window_extent.width / 16, self.vulkan.window_extent.height / 16, 1);
+
+        util::copy_to_image_from_image(
+            &device,
+            cmd,
+            &self.compute_images[frame_index],
+            &self.vulkan.swapchain.images[swapchain_index as usize],
+            self.vulkan.window_extent,
+        );
+
+        util::transition_image_color(&device, cmd, self.vulkan.swapchain.images[swapchain_index as usize].image);
+
+        self.vulkan.end_frame_and_submit();
+    }
+}
+
+fn main() {
+    let event_loop = EventLoop::new().unwrap();
+    let mut application = Application::new(&event_loop);
+
+    event_loop
+        .run(move |event, _control_flow| match event {
+            Event::WindowEvent { event, .. } => match event {
+                WindowEvent::CloseRequested => {
+                    _control_flow.exit();
+                }
+                _ => {
+                    unsafe { application.run() };
+                }
+            },
+            _ => {
+                unsafe { application.run() };
+            }
+        })
+        .unwrap();
 }
