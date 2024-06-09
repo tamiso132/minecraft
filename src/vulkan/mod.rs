@@ -1,6 +1,8 @@
+use core::slice;
 use std::{
     mem,
     sync::{Arc, Mutex},
+    time::{Duration, Instant},
 };
 
 use ash::{
@@ -9,14 +11,20 @@ use ash::{
 };
 use builder::{ComputePipelineBuilder, PipelineBuilder};
 use glm::Mat4;
-use imgui::{FontConfig, FontSource, TextureId};
+use imgui::{draw_list, FontConfig, FontSource, TextureId};
 use imgui_rs_vulkan_renderer::Renderer;
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use loader::DebugLoaderEXT;
 use mesh::MeshImGui;
-use resource::{AllocatedBuffer, AllocatedImage, Resource};
+use resource::{AllocatedBuffer, AllocatedImage, BufferType, Memory, Resource};
 use vk_mem::{Alloc, Allocator};
-use winit::{event_loop::EventLoop, window::WindowBuilder};
+use winit::{
+    event::Event,
+    event_loop::EventLoop,
+    window::{Window, WindowBuilder},
+};
+
+use crate::{camera::Camera, MAX_FRAMES_IN_FLIGHT};
 
 pub mod builder;
 pub mod init;
@@ -69,17 +77,28 @@ impl PushConstant for SkyBoxPushConstant {
     }
 }
 
+#[repr(C, align(16))]
+struct ImguiPushConstant {
+    ortho_mat: glm::TMat4<f32>,
+    texture_index: u32,
+}
+
 pub struct ImguiContext {
+    pub device: Arc<ash::Device>,
+
     pub imgui: imgui::Context,
     pub platform: WinitPlatform,
 
     pub pipeline: vk::Pipeline,
+    pub layout: vk::PipelineLayout,
     pub texture_atlas: AllocatedImage,
 
     pub texture: imgui::Textures<vk::DescriptorSet>,
 
-    pub vertex_buffer: AllocatedBuffer,
-    pub index_buffer: AllocatedBuffer,
+    pub vertex_buffers: Vec<AllocatedBuffer>,
+    pub index_buffers: Vec<AllocatedBuffer>,
+
+    pub graphic_queue: TKQueue,
 }
 
 impl ImguiContext {
@@ -90,6 +109,7 @@ impl ImguiContext {
         resource: &mut Resource,
         layout: vk::PipelineLayout,
         swapchain_format: vk::Format,
+        graphic: TKQueue,
     ) -> Self {
         let mut imgui = imgui::Context::create();
         imgui.set_ini_filename(None);
@@ -105,52 +125,7 @@ impl ImguiContext {
         imgui.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
         platform.attach_window(imgui.io_mut(), window, HiDpiMode::Rounded);
 
-        // let pool_sizes = vec![
-        //     init::descriptor_pool_size(vk::DescriptorType::SAMPLER, 500),
-        //     init::descriptor_pool_size(vk::DescriptorType::COMBINED_IMAGE_SAMPLER, 500),
-        //     init::descriptor_pool_size(vk::DescriptorType::SAMPLED_IMAGE, 500),
-        //     init::descriptor_pool_size(vk::DescriptorType::STORAGE_IMAGE, 500),
-        // ];
-
-        // let descriptor_pool_info = vk::DescriptorPoolCreateInfo::default().pool_sizes(&pool_sizes).max_sets(500);
-
-        // let descriptor_pool = unsafe { device.create_descriptor_pool(&descriptor_pool_info, None).unwrap() };
-
-        // let bindings = vec![vk::DescriptorSetLayoutBinding::default()
-        //     .binding(0)
-        //     .descriptor_type(DescriptorType::COMBINED_IMAGE_SAMPLER)
-        //     .descriptor_count(1)
-        //     .stage_flags(ShaderStageFlags::FRAGMENT)];
-
         unsafe {
-            // let layout = device
-            //     .create_descriptor_set_layout(&vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings), None)
-            //     .unwrap();
-
-            // let push_const_range =
-            //     [vk::PushConstantRange { stage_flags: ShaderStageFlags::VERTEX, offset: 0, size: std::mem::size_of::<Mat4>() as u32 }];
-
-            // let layouts = vec![layout];
-
-            // let alloc_info = vk::DescriptorSetAllocateInfo::default()
-            //     .descriptor_pool(descriptor_pool)
-            //     .set_layouts(&layouts);
-
-            // let set = vulkan.device.allocate_descriptor_sets(&alloc_info).unwrap()[0];
-
-            let fonts = imgui.fonts();
-            let atlas_texture = fonts.build_rgba32_texture();
-            //let image_info = vec![vk::DescriptorImageInfo::default()]
-
-            // let pipeline_layout = device
-            //     .create_pipeline_layout(
-            //         &vk::PipelineLayoutCreateInfo::default()
-            //             .set_layouts(&layout)
-            //             .push_constant_ranges(&[push_constant]),
-            //         None,
-            //     )
-            //     .unwrap();
-
             let blend_state = vk::PipelineColorBlendAttachmentState::default()
                 .color_write_mask(vk::ColorComponentFlags::R | vk::ColorComponentFlags::G | vk::ColorComponentFlags::B | vk::ColorComponentFlags::A)
                 .blend_enable(true)
@@ -186,18 +161,188 @@ impl ImguiContext {
 
             let texture = imgui::Textures::new();
 
-            Self { imgui, platform, pipeline, texture_atlas: fonts_texture, texture }
+            // TODO create vertex/index buffers
+            let mut vertex_buffers = vec![];
+            let mut index_buffers = vec![];
+
+            for i in 0..MAX_FRAMES_IN_FLIGHT {
+                let vertex_name = format!("ImguiVertex{:?}", i);
+                let index_name = format!("ImguiIndex{:?}", i);
+
+                let vertex = resource.create_buffer_non_descriptor(
+                    mem::size_of::<MeshImGui>() as u64 * 1000,
+                    BufferType::Vertex,
+                    Memory::Host,
+                    graphic.family,
+                    vertex_name,
+                );
+
+                let index = resource.create_buffer_non_descriptor(
+                    mem::size_of::<u16>() as u64 * 100,
+                    BufferType::Index,
+                    Memory::Host,
+                    graphic.family,
+                    index_name,
+                );
+
+                vertex_buffers.push(vertex);
+                index_buffers.push(index);
+            }
+
+            Self {
+                imgui,
+                platform,
+                pipeline,
+                texture_atlas: fonts_texture,
+                texture,
+                vertex_buffers,
+                index_buffers,
+                graphic_queue: graphic,
+                device,
+                layout,
+            }
         }
     }
+    pub fn get_draw(&mut self, window: &Window) -> &mut imgui::Ui {
+        self.platform.prepare_frame(self.imgui.io_mut(), window).expect("failed to prepare imgui");
+        self.imgui.frame()
+    }
 
-    fn draw(&mut self, cmd: vk::CommandBuffer) {
-        let draw_data = self.imgui.render();
+    pub fn render(
+        &mut self,
+        extent: vk::Extent2D,
+        present_image: &AllocatedImage,
+        frame_index: usize,
+        res: &mut Resource,
+        cmd: vk::CommandBuffer,
+        window: &Window,
+        set: vk::DescriptorSet,
+    ) {
+        unsafe {
+            let draw_data = self.imgui.render();
 
-        let (vertices, indices) = MeshImGui::create_mesh(draw_data);
+            /*Updating buffers */
+            let (vertices, indices) = MeshImGui::create_mesh(draw_data);
 
-        if vertices.len() > self.vertex_buffer.size as usize * mem::size_of::<MeshImGui>() {
-            // TODO create a new buffer at that place
-        }
+            let current_vertex_size = self.vertex_buffers[frame_index].size;
+            let needed_vertex_size = vertices.len() as u64 * mem::size_of::<MeshImGui>() as u64;
+
+            if current_vertex_size > needed_vertex_size {
+                res.resize_buffer_and_destroy(&mut self.vertex_buffers[frame_index], needed_vertex_size);
+            }
+
+            let current_index_size = self.index_buffers[frame_index].size;
+            let needed_index_size = indices.len() as u64 * 2;
+
+            if needed_index_size > current_index_size {
+                res.resize_buffer_and_destroy(&mut self.index_buffers[frame_index], needed_index_size);
+            }
+
+            let slice: &[u8] = slice::from_raw_parts(vertices.as_ptr() as *const u8, vertices.len() * mem::size_of::<imgui::DrawVert>() as usize);
+            res.write_to_buffer_host(&mut self.vertex_buffers[frame_index], slice);
+
+            let index_slice = slice::from_raw_parts(indices.as_ptr() as *const u8, indices.len() * 2);
+            res.write_to_buffer_host(&mut self.index_buffers[frame_index], index_slice);
+
+            /*RENDERING */
+            let offset = vk::Offset2D::default().x(0).y(0);
+            let attachment = vk::RenderingAttachmentInfo::default()
+                .clear_value(vk::ClearValue::default())
+                .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                .image_view(present_image.view)
+                .store_op(vk::AttachmentStoreOp::STORE)
+                .load_op(vk::AttachmentLoadOp::CLEAR);
+
+            // start rendering
+            self.device.cmd_begin_rendering(
+                cmd,
+                &vk::RenderingInfo::default()
+                    .color_attachments(&[attachment])
+                    .layer_count(1)
+                    .render_area(vk::Rect2D { offset, extent }),
+            );
+
+            let view_port = vk::Viewport::default()
+                .height(extent.height as f32)
+                .width(extent.width as f32)
+                .max_depth(1.0)
+                .min_depth(0.0);
+
+            self.device.cmd_set_viewport(cmd, 0, &[view_port]);
+
+            self.device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
+
+            self.device
+                .cmd_bind_index_buffer(cmd, self.index_buffers[frame_index].buffer, 0, vk::IndexType::UINT16);
+            self.device
+                .cmd_bind_vertex_buffers(cmd, 0, &[self.vertex_buffers[frame_index].buffer], &[0]);
+
+            let ortho = [Camera::ortho(draw_data.display_size[0], draw_data.display_size[1])];
+            let push_constant =
+                [ImguiPushConstant { ortho_mat: Camera::ortho(draw_data.display_size[0], draw_data.display_size[1]), texture_index: 0 }];
+
+            let slice = { slice::from_raw_parts(push_constant.as_ptr() as *const u8, ortho.len() * mem::size_of::<ImguiPushConstant>()) };
+
+            self.device
+                .cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::GRAPHICS, self.layout, 0, &[set], &[]);
+
+            self.device.cmd_push_constants(
+                cmd,
+                self.layout,
+                vk::ShaderStageFlags::COMPUTE | vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                0,
+                slice,
+            );
+
+            let mut index_offset = 0;
+            let mut vertex_offset = 0;
+            let mut current_texture_id: Option<TextureId> = None;
+            let clip_offset = draw_data.display_pos;
+            let clip_scale = draw_data.framebuffer_scale;
+
+            for draw_list in draw_data.draw_lists() {
+                for command in draw_list.commands() {
+                    match command {
+                        imgui::DrawCmd::Elements { count, cmd_params: imgui::DrawCmdParams { clip_rect, texture_id, vtx_offset, idx_offset } } => {
+                            let clip_x = (clip_rect[0] - clip_offset[0]) * clip_scale[0];
+                            let clip_y = (clip_rect[1] - clip_offset[1]) * clip_scale[1];
+                            let clip_w = (clip_rect[2] - clip_offset[0]) * clip_scale[0] - clip_x;
+                            let clip_h = (clip_rect[3] - clip_offset[1]) * clip_scale[1] - clip_y;
+
+                            let scissors = [vk::Rect2D {
+                                offset: vk::Offset2D { x: (clip_x as i32).max(0), y: (clip_y as i32).max(0) },
+                                extent: vk::Extent2D { width: clip_w as _, height: clip_h as _ },
+                            }];
+
+                            self.device.cmd_set_scissor(cmd, 0, &scissors);
+
+                            if Some(texture_id) != current_texture_id {
+                                println!("multiple ones");
+                                current_texture_id = Some(texture_id);
+                            }
+
+                            self.device
+                                .cmd_draw_indexed(cmd, count as _, 1, index_offset + idx_offset as u32, vertex_offset + vtx_offset as i32, 0)
+                        }
+                        imgui::DrawCmd::ResetRenderState => todo!(),
+                        imgui::DrawCmd::RawCallback { callback, raw_cmd } => todo!(),
+                    }
+                }
+
+                index_offset += draw_list.idx_buffer().len() as u32;
+                vertex_offset += draw_list.vtx_buffer().len() as i32;
+            }
+
+            self.device.cmd_end_rendering(cmd);
+        } // Update both
+    }
+
+    pub fn update_delta_time(&mut self, delta_time: Duration) {
+        self.imgui.io_mut().update_delta_time(delta_time);
+    }
+
+    pub fn process_event_imgui(&mut self, window: &winit::window::Window, event: &Event<()>) {
+        self.platform.handle_event(self.imgui.io_mut(), window, event);
     }
 }
 
@@ -344,6 +489,7 @@ impl VulkanContext {
                         &mut resources,
                         pipeline_layout,
                         swapchain_images[0].format,
+                        graphic,
                     ))
                 } else {
                     None
@@ -405,7 +551,9 @@ impl VulkanContext {
         }
     }
 
-    // TODO, fix default syncing and submitting
+    pub fn process_imgui_event(&mut self, event: &Event<()>) {
+        self.imgui.as_mut().unwrap().process_event_imgui(&self.window, event);
+    }
     pub fn end_frame_and_submit(&mut self) {
         let cmd = self.cmds[self.current_frame];
 

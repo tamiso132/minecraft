@@ -16,6 +16,17 @@ use super::{
     resource::AllocatedImage,
 };
 
+pub fn create_sampler(device: &ash::Device, filter: vk::Filter, sampler_adress_mode: vk::SamplerAddressMode) -> vk::Sampler {
+    let sampler_info = vk::SamplerCreateInfo::default()
+        .address_mode_u(sampler_adress_mode)
+        .address_mode_v(sampler_adress_mode)
+        .address_mode_w(sampler_adress_mode)
+        .mag_filter(filter)
+        .min_filter(filter);
+
+    unsafe { device.create_sampler(&sampler_info, None).unwrap() }
+}
+
 pub fn create_cmd(device: &ash::Device, pool: CommandPool) -> vk::CommandBuffer {
     let cmd_info = vk::CommandBufferAllocateInfo::default()
         .command_pool(pool)
@@ -207,6 +218,34 @@ pub fn transition_image_color(device: &ash::Device, cmd: vk::CommandBuffer, imag
     unsafe { device.cmd_pipeline_barrier(cmd, src_stage, dst_stage, vk::DependencyFlags::empty(), &vec![], &vec![], &barrier) }
 }
 
+pub fn transition_image_transfer(device: &ash::Device, cmd: vk::CommandBuffer, image: vk::Image) {
+    let barrier = vec![init::image_barrier_info(
+        image,
+        vk::ImageLayout::UNDEFINED,
+        vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+        vk::AccessFlags::NONE_KHR,
+        vk::AccessFlags::TRANSFER_WRITE,
+    )];
+
+    let (src_stage, dst_stage) = (vk::PipelineStageFlags::TOP_OF_PIPE, vk::PipelineStageFlags::TRANSFER);
+
+    unsafe { device.cmd_pipeline_barrier(cmd, src_stage, dst_stage, vk::DependencyFlags::empty(), &vec![], &vec![], &barrier) }
+}
+
+pub fn transition_image_shader_only(device: &ash::Device, cmd: vk::CommandBuffer, image: vk::Image) {
+    let barrier = vec![init::image_barrier_info(
+        image,
+        vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+        vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        vk::AccessFlags::TRANSFER_WRITE,
+        vk::AccessFlags::SHADER_READ,
+    )];
+
+    let (src_stage, dst_stage) = (vk::PipelineStageFlags::TRANSFER, vk::PipelineStageFlags::FRAGMENT_SHADER);
+
+    unsafe { device.cmd_pipeline_barrier(cmd, src_stage, dst_stage, vk::DependencyFlags::empty(), &vec![], &vec![], &barrier) }
+}
+
 pub fn begin_cmd(device: &ash::Device, cmd: vk::CommandBuffer) {
     unsafe {
         device.reset_command_buffer(cmd, vk::CommandBufferResetFlags::empty()).unwrap();
@@ -267,11 +306,18 @@ pub fn copy_to_image_from_buffer(device: &ash::Device, cmd: vk::CommandBuffer, d
     unsafe {
         let image_extent = vk::Extent3D { width: dst_image.extent.width, height: dst_image.extent.height, depth: 1 };
 
+        let image_subresource_layer = vk::ImageSubresourceLayers::default()
+            .aspect_mask(vk::ImageAspectFlags::COLOR)
+            .base_array_layer(0)
+            .layer_count(1)
+            .mip_level(0);
+
         let copy_region = vec![BufferImageCopy::default()
             .buffer_offset(0)
             .buffer_image_height(image_extent.height)
             .buffer_row_length(image_extent.width)
-            .image_extent(image_extent)];
+            .image_extent(image_extent)
+            .image_subresource(image_subresource_layer)];
 
         device.cmd_copy_buffer_to_image(cmd, buffer.0, dst_image.image, dst_image.layout, &copy_region);
     }

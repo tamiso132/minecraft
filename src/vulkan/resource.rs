@@ -1,4 +1,9 @@
-use std::{ffi::CString, mem::MaybeUninit, ptr, sync::Arc};
+use std::{
+    ffi::{c_void, CString},
+    mem::{ManuallyDrop, MaybeUninit},
+    ptr,
+    sync::Arc,
+};
 
 use ash::vk::{self, BufferUsageFlags, DebugUtilsObjectNameInfoEXT, DescriptorType, ImageLayout, ImageUsageFlags, MemoryPropertyFlags};
 use vk_mem::Alloc;
@@ -7,13 +12,21 @@ use crate::vulkan::{util, VulkanContext};
 
 use super::{init, loader::DebugLoaderEXT, TKQueue};
 
-#[repr(u32)]
+#[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Binding {
     CombinedImage,
     StorageImage,
     StorageBuffer,
     UniformBuffer,
+    UNDEFINED,
+}
+
+impl Binding {
+    /// update it if you increase amount of Bindings, dont count undefined
+    const fn variants() -> usize {
+        4
+    }
 }
 
 #[repr(u32)]
@@ -23,6 +36,14 @@ pub enum BufferType {
     Uniform = vk::BufferUsageFlags::UNIFORM_BUFFER.as_raw(),
     Storage = vk::BufferUsageFlags::STORAGE_BUFFER.as_raw(),
     Index = vk::BufferUsageFlags::INDEX_BUFFER.as_raw(),
+}
+
+#[repr(u32)]
+#[derive(PartialEq, Eq)]
+pub enum Memory {
+    BestFit = 0,
+    Local = vk::MemoryPropertyFlags::DEVICE_LOCAL.as_raw(),
+    Host = vk::MemoryPropertyFlags::HOST_VISIBLE.as_raw(),
 }
 
 impl Into<vk::BufferUsageFlags> for BufferType {
@@ -43,6 +64,8 @@ pub struct AllocatedImage {
     pub alloc: Option<vk_mem::Allocation>,
     pub image: vk::Image,
     pub view: vk::ImageView,
+    /// Some might not have a sampler
+    pub sampler: vk::Sampler,
 
     pub extent: vk::Extent2D,
     pub format: vk::Format,
@@ -61,18 +84,23 @@ impl Default for AllocatedImage {
             layout: vk::ImageLayout::UNDEFINED,
             extent: Default::default(),
             descriptor_index: 0,
+            sampler: vk::Sampler::null(),
         }
     }
 }
 
 pub struct AllocatedBuffer {
-    pub index: u32,
+    /// the array number in the binding
+    pub index: u16,
+    /// the binding index
+    pub binding: Binding,
     pub buffer: vk::Buffer,
     pub alloc: vk_mem::Allocation,
     pub buffer_type: BufferType,
     pub memory: vk::MemoryPropertyFlags,
     pub usage: vk::BufferUsageFlags,
     pub descriptor_type: vk::DescriptorType,
+    /// size in bytes
     pub size: u64,
 }
 
@@ -89,8 +117,7 @@ pub struct Resource {
     pool: vk::CommandPool,
 
     debug_loader: DebugLoaderEXT,
-    /// Counter according to the bindings (Combined, Storage Image, Storage Buffer)
-    counter: [u32; 3],
+    counter: [u16; Binding::variants()],
 }
 
 impl Resource {
@@ -159,14 +186,38 @@ impl Resource {
             graphic_queue,
             cmd,
             pool,
-            counter: [0, 0, 0],
+            counter: [0, 0, 0, 0],
         }
     }
 
-    pub fn create_buffer(&mut self, alloc_size: u64, buffer_type: BufferType, queue_family: u32, object_name: String) -> AllocatedBuffer {
-        let queue_family = [queue_family];
+    // dosent matter if it has many if statements, this is not supposed to be called every frame, as resizing is possible.
 
-        let buffer_usage_flag: vk::BufferUsageFlags = buffer_type.into();
+    /// a buffer that isnt bind into the descriptor, For vertex or Index buffers.
+    pub fn create_buffer_non_descriptor(
+        &mut self,
+        alloc_size: u64,
+        buffer_type: BufferType,
+        memory: Memory,
+        queue_family: u32,
+        object_name: String,
+    ) -> AllocatedBuffer {
+        assert!(buffer_type == BufferType::Index || buffer_type == BufferType::Vertex, "Use regular create buffer");
+        let queue_family = [queue_family];
+        let mut alloc_info = vk_mem::AllocationCreateInfo::default();
+
+        (alloc_info.required_flags) = {
+            if memory == Memory::BestFit {
+                vk::MemoryPropertyFlags::HOST_VISIBLE
+            } else {
+                vk::MemoryPropertyFlags::from_raw(memory as u32)
+            }
+        };
+
+        let mut buffer_usage_flag: vk::BufferUsageFlags = buffer_type.into();
+
+        if alloc_info.required_flags == MemoryPropertyFlags::DEVICE_LOCAL {
+            buffer_usage_flag |= vk::BufferUsageFlags::TRANSFER_DST;
+        }
 
         let buffer_info = vk::BufferCreateInfo::default()
             .size(alloc_size)
@@ -174,22 +225,69 @@ impl Resource {
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .queue_family_indices(&queue_family);
 
-        let mut alloc_info = vk_mem::AllocationCreateInfo::default();
+        unsafe {
+            let buffer = self.allocator.create_buffer(&buffer_info, &alloc_info).expect("failed to create buffer");
 
-        let memory_property = if buffer_type == BufferType::Storage || buffer_type == BufferType::Uniform {
-            MemoryPropertyFlags::DEVICE_LOCAL
-        } else {
-            MemoryPropertyFlags::HOST_VISIBLE
-        };
+            let cstring = CString::new(object_name).expect("failed");
+            let debug_info = vk::DebugUtilsObjectNameInfoEXT::default().object_handle(buffer.0).object_name(&cstring);
+
+            self.debug_loader.set_debug_util_object_name_ext(debug_info).unwrap();
+
+            let buffer_info_descriptor = vk::DescriptorBufferInfo::default().buffer(buffer.0).offset(0).range(vk::WHOLE_SIZE);
+
+            let desc = [buffer_info_descriptor];
+
+            AllocatedBuffer {
+                buffer: buffer.0,
+                alloc: buffer.1,
+                buffer_type,
+                size: buffer_info.size,
+                index: 0,
+                descriptor_type: vk::DescriptorType::from_raw(0),
+                memory: alloc_info.required_flags,
+                usage: buffer_usage_flag,
+                binding: Binding::UNDEFINED,
+            }
+        }
+    }
+
+    pub fn create_buffer(
+        &mut self,
+        alloc_size: u64,
+        buffer_type: BufferType,
+        memory: Memory,
+        queue_family: u32,
+        object_name: String,
+    ) -> AllocatedBuffer {
+        let queue_family = [queue_family];
+
+        let mut alloc_info = vk_mem::AllocationCreateInfo::default();
 
         let (descriptor_type, binding) = if buffer_type == BufferType::Storage {
             (vk::DescriptorType::STORAGE_BUFFER, Binding::StorageBuffer)
         } else {
-            // TODO, add uniform
-            (vk::DescriptorType::UNIFORM_BUFFER, Binding::StorageBuffer)
+            (vk::DescriptorType::UNIFORM_BUFFER, Binding::UniformBuffer)
         };
 
-        alloc_info.required_flags = memory_property;
+        (alloc_info.required_flags) = {
+            if memory == Memory::BestFit {
+                vk::MemoryPropertyFlags::HOST_VISIBLE
+            } else {
+                vk::MemoryPropertyFlags::from_raw(memory as u32)
+            }
+        };
+
+        let mut buffer_usage_flag: vk::BufferUsageFlags = buffer_type.into();
+
+        if alloc_info.required_flags == MemoryPropertyFlags::DEVICE_LOCAL {
+            buffer_usage_flag |= vk::BufferUsageFlags::TRANSFER_DST;
+        }
+
+        let buffer_info = vk::BufferCreateInfo::default()
+            .size(alloc_size)
+            .usage(buffer_usage_flag | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .queue_family_indices(&queue_family);
 
         unsafe {
             let buffer = self.allocator.create_buffer(&buffer_info, &alloc_info).expect("failed to create buffer");
@@ -208,35 +306,64 @@ impl Resource {
                 .dst_set(self.set)
                 .descriptor_count(1)
                 .buffer_info(&desc)
-                .dst_array_element(self.counter[Binding::StorageImage as usize])
-                .dst_binding(1);
+                .dst_array_element(self.counter[binding as usize] as u32)
+                .dst_binding(binding as u32);
 
             self.device.update_descriptor_sets(&[write], &vec![]);
-            self.counter[Binding::StorageImage as usize] += 1;
+
+            self.counter[binding as usize] += 1;
 
             AllocatedBuffer {
                 buffer: buffer.0,
                 alloc: buffer.1,
                 buffer_type,
                 size: buffer_info.size,
-                index: self.counter[Binding::StorageImage as usize] - 1,
+                index: self.counter[binding as usize] - 1,
                 descriptor_type,
+                memory: alloc_info.required_flags,
+                usage: buffer_usage_flag,
+                binding,
             }
         }
     }
 
-    pub fn resize_buffer_and_destroy(&mut self, mut old_buffer: AllocatedBuffer, new_size: u64) {
+    /// Only works for host visible memory
+    pub fn write_to_buffer_host(&mut self, buffer: &mut AllocatedBuffer, data: &[u8]) {
+        unsafe {
+            let dst_ptr = self.allocator.map_memory(&mut buffer.alloc).unwrap();
+
+            ptr::copy_nonoverlapping(data.as_ptr(), dst_ptr, data.len());
+
+            self.allocator.unmap_memory(&mut buffer.alloc);
+        }
+    }
+
+    pub fn update_buffer<T: Copy>(&mut self, buffer: &mut AllocatedBuffer, data: &[T]) {
+        let size = std::mem::size_of_val(data) as _;
+        unsafe {
+            let data_ptr = self.allocator.map_memory(&mut buffer.alloc).unwrap();
+            let mut align = ash::util::Align::new(data_ptr as *mut c_void, std::mem::align_of::<T>() as _, size);
+            align.copy_from_slice(data);
+        };
+    }
+
+    pub fn resize_buffer_and_destroy(&mut self, resize_buffer: &mut AllocatedBuffer, new_size: u64) {
         let buffer_info = vk::BufferCreateInfo::default()
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .size(new_size)
-            .usage(old_buffer.usage);
+            .usage(resize_buffer.usage);
 
         let mut alloc_info = vk_mem::AllocationCreateInfo::default();
-        alloc_info.required_flags = old_buffer.memory;
+        alloc_info.required_flags = resize_buffer.memory;
 
         unsafe {
             let new_buffer = self.allocator.create_buffer(&buffer_info, &alloc_info).unwrap();
-            self.allocator.destroy_buffer(old_buffer.buffer, &mut old_buffer.alloc);
+            self.allocator.destroy_buffer(resize_buffer.buffer, &mut resize_buffer.alloc);
+
+            /*Update  buffer */
+            resize_buffer.size = new_size;
+            resize_buffer.alloc = new_buffer.1;
+            resize_buffer.buffer = new_buffer.0;
         }
     }
 
@@ -273,17 +400,17 @@ impl Resource {
         let descriptor_image_info = vec![vk::DescriptorImageInfo::default()
             .image_layout(vk::ImageLayout::GENERAL)
             .image_view(image.view)
-            .sampler(vk::Sampler::null())];
+            .sampler(image.sampler)];
 
         let descriptor_write = vk::WriteDescriptorSet::default()
             .descriptor_type(image.descriptor_type)
             .descriptor_count(1)
             .dst_binding(binding as u32)
             .dst_set(self.set)
-            .dst_array_element(self.counter[binding])
+            .dst_array_element(self.counter[binding] as u32)
             .image_info(&descriptor_image_info);
 
-        image.descriptor_index = self.counter[binding];
+        image.descriptor_index = self.counter[binding] as u32;
 
         self.counter[binding] += 1;
 
@@ -307,6 +434,8 @@ impl Resource {
 
             let view = self.device.create_image_view(&view_info, None).unwrap();
 
+            let sampler = util::create_sampler(&self.device, vk::Filter::NEAREST, vk::SamplerAddressMode::REPEAT);
+
             let mut image = AllocatedImage {
                 alloc: Some(texture_image.1),
                 image: texture_image.0,
@@ -316,8 +445,26 @@ impl Resource {
                 layout: vk::ImageLayout::UNDEFINED,
                 descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
                 descriptor_index: 0,
+                sampler,
             };
+
+            util::begin_cmd(&self.device, self.cmd);
+
+            util::transition_image_transfer(&self.device, self.cmd, image.image);
+
+            image.layout = vk::ImageLayout::TRANSFER_DST_OPTIMAL;
+
             util::copy_to_image_from_buffer(&self.device, self.cmd, &image, (staging_buffer, staging_alloc));
+
+            util::transition_image_shader_only(&self.device, self.cmd, image.image);
+
+            image.layout = vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+
+            util::end_cmd_and_submit(&self.device, self.cmd, self.graphic_queue, vec![], vec![], vk::Fence::null());
+
+            // TODO, fix this into returning a "promise", and they can await it when they need the texture.
+            // there is also the option of queing up all the create textures.
+            self.device.device_wait_idle().unwrap();
 
             // gonna remove this later when I refactor out imgui from using this
             if bind {
@@ -355,6 +502,7 @@ impl Resource {
                 layout: ImageLayout::UNDEFINED,
                 extent,
                 descriptor_index: 0,
+                ..Default::default()
             };
 
             self.debug_loader

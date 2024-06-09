@@ -3,6 +3,8 @@ use std::ffi::CString;
 use ash::vk::{self, BlendFactor, BlendOp, ImageTiling, MemoryPropertyFlags, PipelineColorBlendAttachmentState};
 use vk_mem::AllocationCreateFlags;
 
+use super::resource::AllocatedImage;
+
 pub fn image_subresource_info(aspect: vk::ImageAspectFlags) -> vk::ImageSubresourceRange {
     vk::ImageSubresourceRange::default()
         .aspect_mask(aspect)

@@ -21,7 +21,7 @@ pub trait Vertex {
 pub struct MeshImGui {
     pos: glm::Vec2,
     coords: glm::Vec2,
-    color: glm::Vec2,
+    color: (u8, u8, u8, u8),
 }
 
 impl MeshImGui {

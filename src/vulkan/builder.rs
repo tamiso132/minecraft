@@ -595,6 +595,7 @@ impl SwapchainBuilder {
                     layout: ImageLayout::UNDEFINED,
                     extent: self.extent,
                     descriptor_index: 0,
+                    ..Default::default()
                 });
             }
 

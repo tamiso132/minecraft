@@ -1,6 +1,11 @@
 #![feature(inherent_associated_types)]
 
-use std::ffi::CString;
+use std::{
+    ffi::CString,
+    os::unix::thread,
+    thread::Thread,
+    time::{Duration, Instant},
+};
 
 use ash::vk;
 use vulkan::{
@@ -14,6 +19,7 @@ use winit::{
     window::WindowBuilder,
 };
 
+mod camera;
 mod vulkan;
 
 extern crate nalgebra_glm as glm;
@@ -28,9 +34,11 @@ struct Application {
     compute_images: Vec<AllocatedImage>,
 
     push_constant: SkyBoxPushConstant,
+    last_frame: Instant,
 }
 
 impl Application {
+    const HZ_MAX: u128 = (1000.0 / 60.0) as u128;
     fn new(event_loop: &EventLoop<()>) -> Self {
         let mut vulkan = VulkanContext::new(event_loop, MAX_FRAMES_IN_FLIGHT, true);
 
@@ -63,10 +71,16 @@ impl Application {
         util::end_cmd_and_submit(&vulkan.device, vulkan.cmds[0], vulkan.graphic, vec![], vec![], vk::Fence::null());
         unsafe { vulkan.device.device_wait_idle().unwrap() };
 
-        Self { vulkan, compute, compute_images: images, push_constant: SkyBoxPushConstant::new() }
+        Self {
+            vulkan,
+            compute,
+            compute_images: images,
+            push_constant: SkyBoxPushConstant::new(),
+            last_frame: Instant::now(),
+        }
     }
 
-    unsafe fn run(&mut self) {
+    unsafe fn draw(&mut self) {
         self.vulkan.prepare_frame();
 
         let device = &self.vulkan.device;
@@ -107,25 +121,83 @@ impl Application {
 
         util::transition_image_color(&device, cmd, self.vulkan.swapchain.images[swapchain_index as usize].image);
 
+        /*Start Rendering*/
+
+        let imgui = self.vulkan.imgui.as_mut().unwrap();
+
+        let u1 = imgui.get_draw(&self.vulkan.window);
+        u1.show_demo_window(&mut true);
+
+        let set = self.vulkan.resources.set;
+
+        imgui.render(
+            self.vulkan.window_extent,
+            &self.vulkan.swapchain.images[self.vulkan.swapchain.image_index as usize],
+            self.vulkan.current_frame,
+            &mut self.vulkan.resources,
+            cmd,
+            &self.vulkan.window,
+            set,
+        );
+
         self.vulkan.end_frame_and_submit();
+
+        let now = Instant::now();
+
+        let diff = now - self.last_frame;
+
+        let hz_diff = Self::HZ_MAX - diff.as_millis();
+
+        if hz_diff > 0 {
+            std::thread::sleep(Duration::from_millis(hz_diff as u64));
+        }
+
+        self.vulkan.window.request_redraw();
+    }
+
+    unsafe fn run(&mut self, event_loop: EventLoop<()>) {
+        self.last_frame = Instant::now();
+
+        event_loop
+            .run(move |event, _control_flow| {
+                self.vulkan.imgui.as_mut().unwrap().process_event_imgui(&self.vulkan.window, &event);
+
+                match event {
+                    Event::WindowEvent { event, .. } => match event {
+                        WindowEvent::CloseRequested => {
+                            _control_flow.exit();
+                        }
+                        WindowEvent::RedrawRequested => {}
+
+                        _ => {}
+                    },
+                    Event::AboutToWait => {
+                        self.draw();
+                        // std::thread::sleep(Duration::from_secs(1));
+                    }
+
+                    // new frame
+                    Event::NewEvents(_) => {
+                        let now = Instant::now();
+                        let delta_time = now - self.last_frame;
+
+                        self.vulkan.imgui.as_mut().unwrap().update_delta_time(delta_time);
+                        self.last_frame = now;
+                    }
+                    Event::LoopExiting => {
+                        // Cleanup resources here
+                    }
+                    _ => {}
+                }
+            })
+            .unwrap();
     }
 }
 
 fn main() {
     let event_loop = EventLoop::new().unwrap();
     let mut application = Application::new(&event_loop);
-
-    event_loop
-        .run(move |event, _control_flow| match event {
-            Event::WindowEvent { event, .. } => match event {
-                WindowEvent::CloseRequested => {
-                    _control_flow.exit();
-                }
-                _ => {}
-            },
-            _ => {
-                unsafe { application.run() };
-            }
-        })
-        .unwrap();
+    unsafe {
+        application.run(event_loop);
+    }
 }
