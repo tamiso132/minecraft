@@ -18,13 +18,8 @@ use winit::{
     event_loop::{EventLoop, EventLoopWindowTarget},
     window::WindowBuilder,
 };
-
 mod camera;
 mod vulkan;
-
-extern crate nalgebra_glm as glm;
-extern crate vk_mem;
-
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
 /// There should only be application relevant information in these functions
@@ -37,19 +32,17 @@ struct Application {
     last_frame: Instant,
 }
 
+extern crate ultraviolet as glm;
+
 impl Application {
     const HZ_MAX: u128 = (1000.0 / 60.0) as u128;
     fn new(event_loop: &EventLoop<()>) -> Self {
         let mut vulkan = VulkanContext::new(event_loop, MAX_FRAMES_IN_FLIGHT, true);
 
         let comp_skybox = util::create_shader(&vulkan.device, "shaders/spv/skybox.comp.spv".to_owned());
-
         let compute = ComputePipelineBuilder::new(comp_skybox).build(&vulkan.device, vulkan.pipeline_layout);
-
         let mut images = vec![];
-
         util::begin_cmd(&vulkan.device, vulkan.cmds[0]);
-
         /*Should be outside of this initilize */
         for i in 0..MAX_FRAMES_IN_FLIGHT {
             let name = format!("{}_{}", "compute_skybox", i);
@@ -99,7 +92,7 @@ impl Application {
 
         device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, self.compute);
 
-        self.push_constant.image_index = self.compute_images[self.vulkan.current_frame].descriptor_index;
+        self.push_constant.image_index = self.compute_images[self.vulkan.current_frame].index;
 
         device.cmd_push_constants(
             cmd,
@@ -125,8 +118,8 @@ impl Application {
 
         let imgui = self.vulkan.imgui.as_mut().unwrap();
 
-        let u1 = imgui.get_draw(&self.vulkan.window);
-        u1.show_demo_window(&mut true);
+        let u1 = imgui.get_draw_instance(&self.vulkan.window);
+        u1.button("hello");
 
         let set = self.vulkan.resources.set;
 
@@ -191,6 +184,22 @@ impl Application {
                 }
             })
             .unwrap();
+    }
+
+    // need to rebuild the swapchain and any resources that depend on the window extent
+    pub fn recreate_swapchain(&mut self) {
+        unsafe {
+            self.vulkan.device.device_wait_idle().unwrap();
+        }
+        let window_extent_physical = self.vulkan.window.inner_size();
+        let extent = vk::Extent2D { width: window_extent_physical.width, height: window_extent_physical.height };
+
+        self.vulkan.recreate_swapchain(extent);
+
+        // TODO, recreate my general image
+        for image in &mut self.compute_images {
+            self.vulkan.resources.resize_image(image, extent);
+        }
     }
 }
 

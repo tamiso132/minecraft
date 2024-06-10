@@ -1,13 +1,13 @@
 use ash::vk;
-use glm::TVec3;
+use glm::{Mat4, Vec3};
 
 pub struct Camera {
-    pos: glm::TVec3<f32>,
-    front: glm::TVec3<f32>,
-    up: glm::TVec3<f32>,
+    pos: glm::Vec3,
+    front: glm::Vec3,
+    up: glm::Vec3,
 
     extent: vk::Extent2D,
-    projection: glm::TMat4<f32>,
+    projection: glm::Mat4,
 
     yaw: f32,
     pitch: f32,
@@ -26,13 +26,12 @@ impl Camera {
         let yaw = 0.0;
         let pitch = 0.0;
 
-        let mut projection: glm::TMat4<f32> = glm::perspective(aspect, fovy, near, far);
-        projection[(1, 1)] *= -1.0;
+        let projection: glm::Mat4 = glm::projection::perspective_vk(aspect, fovy, near, far);
 
         Self {
-            pos: TVec3::new(0.0, 0.0, 3.0),
-            front: TVec3::new(0.0, 0.0, 1.0),
-            up: TVec3::new(0.0, 1.0, 0.0),
+            pos: Vec3::new(0.0, 0.0, 3.0),
+            front: Vec3::new(0.0, 0.0, 1.0),
+            up: Vec3::new(0.0, 1.0, 0.0),
             extent,
             projection,
             yaw,
@@ -43,19 +42,19 @@ impl Camera {
         }
     }
 
-    pub fn get_view(&self) -> glm::TMat4<f32> {
-        glm::look_at(&self.pos, &(self.pos + self.front), &self.up)
+    pub fn get_view(&self) -> glm::Mat4 {
+        Mat4::look_at(self.pos, self.pos + self.front, self.up)
     }
 
-    pub fn ortho(max_right: f32, max_top: f32) -> glm::TMat4<f32> {
-        glm::ortho(0.0, max_right, 0.0, max_top, -1.0, 1.0)
+    pub fn ortho(max_right: f32, max_top: f32) -> glm::Mat4 {
+        glm::projection::orthographic_vk(0.0, max_right, 0.0, max_top, -1.0, 1.0)
     }
 
-    pub fn get_projection(&self) -> glm::TMat4<f32> {
+    pub fn get_projection(&self) -> glm::Mat4 {
         self.projection
     }
 
-    pub fn get_pos(&self) -> glm::TVec3<f32> {
+    pub fn get_pos(&self) -> glm::Vec3 {
         self.pos
     }
 }

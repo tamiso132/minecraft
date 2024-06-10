@@ -23,7 +23,7 @@ use super::{
     init,
     loader::{DebugLoaderEXT, ShaderLoaderEXT},
     mesh::Vertex,
-    resource::AllocatedImage,
+    resource::{AllocatedImage, Resource},
 };
 
 // everything that is not a builder, will be moved later from here
@@ -550,6 +550,7 @@ impl SwapchainBuilder {
 
     pub fn build(
         self,
+        res: &mut Resource,
         swapchain_images_out: &mut Vec<AllocatedImage>,
         depth_image_out: &mut AllocatedImage,
     ) -> (swapchain::Device, vk::SwapchainKHR, surface::Instance, vk::SurfaceKHR) {
@@ -594,33 +595,13 @@ impl SwapchainBuilder {
                     format: self.image_format,
                     layout: ImageLayout::UNDEFINED,
                     extent: self.extent,
-                    descriptor_index: 0,
                     ..Default::default()
                 });
             }
 
-            let (depth_info, alloc_info) = init::image_info(
-                self.extent,
-                4,
-                MemoryPropertyFlags::DEVICE_LOCAL,
-                vk::Format::D16_UNORM,
-                vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
-            );
+            let allocated_depth = res.create_depth_image(vk::Format::D16_UNORM, self.extent);
 
-            let depth = self.allocator.create_image(&depth_info, &alloc_info).unwrap();
-
-            let depth_view = self
-                .device
-                .create_image_view(&init::image_view_info(depth.0, vk::Format::D16_UNORM, vk::ImageAspectFlags::DEPTH), None)
-                .unwrap();
-
-            depth_image_out.alloc = Some(depth.1);
-            depth_image_out.image = depth.0;
-            depth_image_out.view = depth_view;
-            depth_image_out.descriptor_type = vk::DescriptorType::STORAGE_IMAGE;
-            depth_image_out.format = vk::Format::D16_UNORM;
-            depth_image_out.layout = ImageLayout::UNDEFINED;
-            depth_image_out.extent = self.extent;
+            depth_image_out.set(allocated_depth);
 
             (swapchain_loader, swapchain, self.surface_loader, self.surface)
         }

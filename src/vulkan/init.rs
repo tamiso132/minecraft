@@ -62,6 +62,17 @@ pub fn image_view_info(image: vk::Image, format: vk::Format, aspect: vk::ImageAs
         .image(image)
 }
 
+pub fn image_descriptor_info(layout: vk::ImageLayout, view: vk::ImageView, sampler: vk::Sampler) -> Vec<vk::DescriptorImageInfo> {
+    vec![vk::DescriptorImageInfo::default()
+        .image_layout(vk::ImageLayout::GENERAL)
+        .image_view(view)
+        .sampler(sampler)]
+}
+
+pub fn buffer_descriptor_info(buffer: vk::Buffer) -> Vec<vk::DescriptorBufferInfo> {
+    vec![vk::DescriptorBufferInfo::default().buffer(buffer).offset(0).range(vk::WHOLE_SIZE)]
+}
+
 pub fn device_queue_info(family_index: u32) -> vk::DeviceQueueInfo2<'static> {
     vk::DeviceQueueInfo2::default().queue_family_index(family_index).queue_index(0)
 }
