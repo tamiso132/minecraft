@@ -8,6 +8,7 @@ use std::{
 };
 
 use ash::vk;
+use env_logger::Builder;
 use vulkan::{
     builder::{self, ComputePipelineBuilder},
     resource::AllocatedImage,
@@ -35,8 +36,10 @@ struct Application {
 extern crate ultraviolet as glm;
 
 impl Application {
-    const HZ_MAX: u128 = (1000.0 / 60.0) as u128;
+    const HZ_MAX: i64 = (1000.0 / 60.0) as i64;
     fn new(event_loop: &EventLoop<()>) -> Self {
+        Builder::new().filter_level(log::LevelFilter::Info).init();
+
         let mut vulkan = VulkanContext::new(event_loop, MAX_FRAMES_IN_FLIGHT, true);
 
         let comp_skybox = util::create_shader(&vulkan.device, "shaders/spv/skybox.comp.spv".to_owned());
@@ -57,8 +60,6 @@ impl Application {
                     | vk::ImageUsageFlags::COLOR_ATTACHMENT,
                 std::ffi::CString::new(name).unwrap(),
             ));
-
-            util::transition_image_general(&vulkan.device, vulkan.cmds[0], images.last().unwrap().image);
         }
 
         util::end_cmd_and_submit(&vulkan.device, vulkan.cmds[0], vulkan.graphic, vec![], vec![], vk::Fence::null());
@@ -92,7 +93,7 @@ impl Application {
 
         device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, self.compute);
 
-        self.push_constant.image_index = self.compute_images[self.vulkan.current_frame].index;
+        self.push_constant.image_index = self.compute_images[self.vulkan.current_frame].index as u32;
 
         device.cmd_push_constants(
             cmd,
@@ -118,8 +119,12 @@ impl Application {
 
         let imgui = self.vulkan.imgui.as_mut().unwrap();
 
-        let u1 = imgui.get_draw_instance(&self.vulkan.window);
-        u1.button("hello");
+        let ui = imgui.get_draw_instance(&self.vulkan.window);
+
+        ui.input_float4("Data1", &mut self.push_constant.data1).build();
+        ui.input_float4("Data2", &mut self.push_constant.data2).build();
+        ui.input_float4("Data3", &mut self.push_constant.data3).build();
+        ui.input_float4("Data4", &mut self.push_constant.data4).build();
 
         let set = self.vulkan.resources.set;
 
@@ -139,7 +144,7 @@ impl Application {
 
         let diff = now - self.last_frame;
 
-        let hz_diff = Self::HZ_MAX - diff.as_millis();
+        let hz_diff = Self::HZ_MAX - diff.as_millis() as i64;
 
         if hz_diff > 0 {
             std::thread::sleep(Duration::from_millis(hz_diff as u64));
@@ -154,34 +159,32 @@ impl Application {
         event_loop
             .run(move |event, _control_flow| {
                 self.vulkan.imgui.as_mut().unwrap().process_event_imgui(&self.vulkan.window, &event);
-
+                _control_flow.set_control_flow(winit::event_loop::ControlFlow::Poll);
                 match event {
                     Event::WindowEvent { event, .. } => match event {
                         WindowEvent::CloseRequested => {
                             _control_flow.exit();
                         }
-                        WindowEvent::RedrawRequested => {}
+                        WindowEvent::RedrawRequested => {
+                            self.draw();
+                        }
 
                         _ => {}
                     },
-                    Event::AboutToWait => {
-                        self.draw();
-                        // std::thread::sleep(Duration::from_secs(1));
-                    }
-
+                    Event::AboutToWait => {}
                     // new frame
-                    Event::NewEvents(_) => {
-                        let now = Instant::now();
-                        let delta_time = now - self.last_frame;
-
-                        self.vulkan.imgui.as_mut().unwrap().update_delta_time(delta_time);
-                        self.last_frame = now;
-                    }
+                    Event::NewEvents(_) => {}
                     Event::LoopExiting => {
                         // Cleanup resources here
                     }
                     _ => {}
                 }
+
+                let now = Instant::now();
+                let delta_time = now - self.last_frame;
+
+                self.vulkan.imgui.as_mut().unwrap().update_delta_time(delta_time);
+                self.last_frame = now;
             })
             .unwrap();
     }

@@ -26,7 +26,8 @@ impl Camera {
         let yaw = 0.0;
         let pitch = 0.0;
 
-        let projection: glm::Mat4 = glm::projection::perspective_vk(aspect, fovy, near, far);
+        let mut projection: glm::Mat4 = glm::projection::perspective_vk(aspect, fovy, near, far);
+        projection[1][1] *= -1.0;
 
         Self {
             pos: Vec3::new(0.0, 0.0, 3.0),

@@ -190,9 +190,9 @@ pub fn transition_image_present(device: &ash::Device, cmd: vk::CommandBuffer, im
     unsafe { device.cmd_pipeline_barrier(cmd, src_stage, dst_stage, vk::DependencyFlags::empty(), &vec![], &vec![], &barrier) }
 }
 
-pub fn transition_image_general(device: &ash::Device, cmd: vk::CommandBuffer, image: vk::Image) {
+pub fn transition_image_general(device: &ash::Device, cmd: vk::CommandBuffer, image: &mut AllocatedImage) {
     let barrier = vec![init::image_barrier_info(
-        image,
+        image.image,
         vk::ImageLayout::UNDEFINED,
         vk::ImageLayout::GENERAL,
         vk::AccessFlags::NONE_KHR,
@@ -202,6 +202,7 @@ pub fn transition_image_general(device: &ash::Device, cmd: vk::CommandBuffer, im
     let (src_stage, dst_stage) = (vk::PipelineStageFlags::TOP_OF_PIPE, vk::PipelineStageFlags::COMPUTE_SHADER);
 
     unsafe { device.cmd_pipeline_barrier(cmd, src_stage, dst_stage, vk::DependencyFlags::empty(), &vec![], &vec![], &barrier) }
+    image.layout = vk::ImageLayout::GENERAL;
 }
 
 pub fn transition_image_color(device: &ash::Device, cmd: vk::CommandBuffer, image: vk::Image) {
@@ -394,7 +395,7 @@ pub fn copy_to_image_from_image(
             dst_image.image,
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             &[image_blit],
-            vk::Filter::LINEAR,
+            vk::Filter::NEAREST,
         );
 
         src_barrier = src_barrier

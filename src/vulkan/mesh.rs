@@ -39,7 +39,6 @@ impl MeshImGui {
 
 impl Vertex for MeshImGui {
     fn get_vertex_attribute_desc() -> Vec<vk::VertexInputAttributeDescription> {
-        // TODO check so
         [
             vk::VertexInputAttributeDescription::default()
                 .binding(0)
@@ -50,7 +49,7 @@ impl Vertex for MeshImGui {
                 .binding(0)
                 .location(1)
                 .format(vk::Format::R32G32_SFLOAT)
-                .offset(memoffset::offset_of!(MeshImGui, pos) as u32),
+                .offset(memoffset::offset_of!(MeshImGui, coords) as u32),
             vk::VertexInputAttributeDescription::default()
                 .binding(0)
                 .location(2)

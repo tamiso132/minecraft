@@ -63,10 +63,7 @@ pub fn image_view_info(image: vk::Image, format: vk::Format, aspect: vk::ImageAs
 }
 
 pub fn image_descriptor_info(layout: vk::ImageLayout, view: vk::ImageView, sampler: vk::Sampler) -> Vec<vk::DescriptorImageInfo> {
-    vec![vk::DescriptorImageInfo::default()
-        .image_layout(vk::ImageLayout::GENERAL)
-        .image_view(view)
-        .sampler(sampler)]
+    vec![vk::DescriptorImageInfo::default().image_layout(layout).image_view(view).sampler(sampler)]
 }
 
 pub fn buffer_descriptor_info(buffer: vk::Buffer) -> Vec<vk::DescriptorBufferInfo> {

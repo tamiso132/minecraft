@@ -57,7 +57,7 @@ pub struct AllocatedImage {
     /// Descriptor Binding Number
     pub binding: Binding,
     /// the index in the binding elements.
-    pub index: u32,
+    pub index: u16,
 
     pub alloc: Option<vk_mem::Allocation>,
     pub image: vk::Image,
@@ -257,15 +257,11 @@ impl Resource {
 
             self.debug_loader.set_debug_util_object_name_ext(debug_info).unwrap();
 
-            let buffer_info_descriptor = vk::DescriptorBufferInfo::default().buffer(buffer.0).offset(0).range(vk::WHOLE_SIZE);
-
-            let desc = [buffer_info_descriptor];
-
             AllocatedBuffer {
                 buffer: buffer.0,
                 alloc: buffer.1,
                 buffer_type,
-                size: buffer_info.size,
+                size: alloc_size,
                 index: 0,
                 descriptor_type: vk::DescriptorType::from_raw(0),
                 memory: alloc_info.required_flags,
@@ -321,25 +317,7 @@ impl Resource {
 
             self.debug_loader.set_debug_util_object_name_ext(debug_info).unwrap();
 
-            let buffer_info_descriptor = vk::DescriptorBufferInfo::default().buffer(buffer.0).offset(0).range(vk::WHOLE_SIZE);
-
-            let desc = [buffer_info_descriptor];
-
-            let write = vk::WriteDescriptorSet::default()
-                .descriptor_type(descriptor_type)
-                .dst_set(self.set)
-                .descriptor_count(1)
-                .buffer_info(&desc)
-                .dst_array_element(self.counter[binding as usize] as u32)
-                .dst_binding(binding as u32);
-
-            self.device.update_descriptor_sets(&[write], &vec![]);
-
-            self.counter[binding as usize] += 1;
-
-            // bind to descriptor
-
-            AllocatedBuffer {
+            let mut alloc_buffer = AllocatedBuffer {
                 buffer: buffer.0,
                 alloc: buffer.1,
                 buffer_type,
@@ -349,14 +327,26 @@ impl Resource {
                 memory: alloc_info.required_flags,
                 usage: buffer_usage_flag,
                 binding,
-            }
+            };
+
+            let buffer_descriptor = init::buffer_descriptor_info(alloc_buffer.buffer);
+
+            self.bind_to_descriptor(
+                &mut alloc_buffer.index,
+                alloc_buffer.descriptor_type,
+                alloc_buffer.binding,
+                vec![],
+                buffer_descriptor,
+            );
+
+            alloc_buffer
         }
     }
 
     pub fn create_depth_image(&mut self, format: vk::Format, extent: vk::Extent2D) -> AllocatedImage {
         let usage = vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT;
 
-        let (image_info, alloc_info) = init::image_info(extent, 4, vk::MemoryPropertyFlags::DEVICE_LOCAL, vk::Format::R8G8B8A8_UNORM, usage);
+        let (image_info, alloc_info) = init::image_info(extent, 4, vk::MemoryPropertyFlags::DEVICE_LOCAL, format, usage);
         unsafe {
             let depth_image = self.allocator.create_image(&image_info, &alloc_info).unwrap();
 
@@ -430,8 +420,10 @@ impl Resource {
             // there is also the option of queing up all the create textures.
             self.device.device_wait_idle().unwrap();
 
+            let image_descriptor = init::image_descriptor_info(image.layout, image.view, image.sampler);
+
             // gonna remove this later when I refactor out imgui from using this
-            // self.binds_descriptor();
+            self.bind_to_descriptor(&mut image.index, image.descriptor_type, image.binding, image_descriptor, vec![]);
 
             image
         }
@@ -454,7 +446,6 @@ impl Resource {
             let image_view_info = init::image_view_info(image.0, format, vk::ImageAspectFlags::COLOR);
 
             let view = self.device.create_image_view(&image_view_info, None).unwrap();
-
             let mut alloc_image = AllocatedImage {
                 alloc: Some(image.1),
                 image: image.0,
@@ -476,9 +467,16 @@ impl Resource {
                 .set_debug_util_object_name_ext(vk::DebugUtilsObjectNameInfoEXT::default().object_handle(image.0).object_name(&name))
                 .unwrap();
 
-            // TODO, bind to descriptor
             // TODO, automatically transfer it to general layout
             // self.bind_to_descriptor(&mut alloc_image, Binding::StorageImage);
+            util::begin_cmd(&self.device, self.cmd);
+            util::transition_image_general(&self.device, self.cmd, &mut alloc_image);
+            util::end_cmd_and_submit(&self.device, self.cmd, self.graphic_queue, vec![], vec![], vk::Fence::null());
+            self.device.queue_wait_idle(self.graphic_queue.get_queue()).unwrap();
+
+            let image_descriptor = init::image_descriptor_info(alloc_image.layout, alloc_image.view, alloc_image.sampler);
+
+            self.bind_to_descriptor(&mut alloc_image.index, alloc_image.descriptor_type, Binding::StorageImage, image_descriptor, vec![]);
 
             alloc_image
         }
@@ -534,6 +532,16 @@ impl Resource {
             resize_buffer.size = new_size;
             resize_buffer.alloc = new_buffer.1;
             resize_buffer.buffer = new_buffer.0;
+
+            let buffer_descriptor = init::buffer_descriptor_info(resize_buffer.buffer);
+
+            self.update_descriptor_bind(
+                resize_buffer.index as u32,
+                resize_buffer.descriptor_type,
+                resize_buffer.binding,
+                vec![],
+                buffer_descriptor,
+            )
         }
     }
 
@@ -559,6 +567,26 @@ impl Resource {
         }
     }
 
+    pub fn resize_buffer_non_descriptor(&mut self, resize_buffer: &mut AllocatedBuffer, new_size: u64) {
+        let buffer_info = vk::BufferCreateInfo::default()
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .size(new_size)
+            .usage(resize_buffer.usage);
+
+        let mut alloc_info = vk_mem::AllocationCreateInfo::default();
+        alloc_info.required_flags = resize_buffer.memory;
+
+        unsafe {
+            let new_buffer = self.allocator.create_buffer(&buffer_info, &alloc_info).unwrap();
+            self.allocator.destroy_buffer(resize_buffer.buffer, &mut resize_buffer.alloc);
+
+            /*Update  buffer */
+            resize_buffer.size = new_size;
+            resize_buffer.alloc = new_buffer.1;
+            resize_buffer.buffer = new_buffer.0;
+        }
+    }
+
     pub fn resize_image_non_descriptor(&mut self, depth_alloc: &mut AllocatedImage) {}
 
     pub fn get_layout_vec(&self) -> Vec<vk::DescriptorSetLayout> {
@@ -568,7 +596,7 @@ impl Resource {
     // binds the image to the descriptor layout so it can be accessed through the shader
     fn bind_to_descriptor(
         &mut self,
-        index: &mut u32,
+        index: &mut u16,
         descriptor_type: vk::DescriptorType,
         binding: Binding,
         image_descriptor: Vec<vk::DescriptorImageInfo>,
@@ -578,14 +606,14 @@ impl Resource {
 
         let descriptor_write = vk::WriteDescriptorSet::default()
             .descriptor_type(descriptor_type)
-            .descriptor_count(1)
             .dst_binding(binding as u32)
             .dst_set(self.set)
             .dst_array_element(self.counter[binding] as u32)
             .image_info(&image_descriptor)
-            .buffer_info(&buffer_descriptor);
+            .buffer_info(&buffer_descriptor)
+            .descriptor_count(1);
 
-        *index = self.counter[binding] as u32;
+        *index = self.counter[binding];
 
         self.counter[binding] += 1;
 
@@ -594,7 +622,7 @@ impl Resource {
 
     fn update_descriptor_bind(
         &mut self,
-        index: &mut u32,
+        index: u32,
         descriptor_type: vk::DescriptorType,
         binding: Binding,
         image_descriptor: Vec<vk::DescriptorImageInfo>,
@@ -607,7 +635,7 @@ impl Resource {
             .descriptor_count(1)
             .dst_binding(binding as u32)
             .dst_set(self.set)
-            .dst_array_element(*index)
+            .dst_array_element(index)
             .image_info(&image_descriptor)
             .buffer_info(&buffer_descriptor);
 

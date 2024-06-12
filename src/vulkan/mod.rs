@@ -40,20 +40,20 @@ pub trait PushConstant {
 
 #[repr(C, align(16))]
 pub struct SkyBoxPushConstant {
-    data1: glm::Vec4,
-    data2: glm::Vec4,
-    data3: glm::Vec4,
-    data4: glm::Vec4,
+    pub data1: [f32; 4],
+    pub data2: [f32; 4],
+    pub data3: [f32; 4],
+    pub data4: [f32; 4],
     pub image_index: u32,
 }
 
 impl SkyBoxPushConstant {
     pub fn new() -> Self {
         Self {
-            data1: glm::Vec4::new(0.5, 0.5, 0.5, 0.5),
-            data2: glm::Vec4::new(0.5, 0.5, 0.5, 0.5),
-            data3: glm::Vec4::new(1.0, 1.0, 1.0, 1.0),
-            data4: glm::Vec4::new(1.0, 1.0, 1.0, 1.0),
+            data1: [0.0, 0.1, 1.0, 0.980],
+            data2: [0.5, 0.5, 0.5, 0.5],
+            data3: [0.5, 0.5, 0.5, 0.5],
+            data4: [0.5, 0.5, 0.5, 0.5],
             image_index: 0,
         }
     }
@@ -168,25 +168,19 @@ impl ImguiContext {
                 let vertex_name = format!("ImguiVertex{:?}", i);
                 let index_name = format!("ImguiIndex{:?}", i);
 
-                let vertex = resource.create_buffer_non_descriptor(
-                    mem::size_of::<MeshImGui>() as u64 * 1000,
-                    BufferType::Vertex,
-                    Memory::Host,
-                    graphic.family,
-                    vertex_name,
-                );
+                let starter_vertex_size = mem::size_of::<MeshImGui>() as u64 * 1000;
+                let starter_index_size = mem::size_of::<u16>() as u64 * 100;
 
-                let index = resource.create_buffer_non_descriptor(
-                    mem::size_of::<u16>() as u64 * 100,
-                    BufferType::Index,
-                    Memory::Host,
-                    graphic.family,
-                    index_name,
-                );
+                let vertex =
+                    resource.create_buffer_non_descriptor(starter_vertex_size, BufferType::Vertex, Memory::Host, graphic.family, vertex_name);
+
+                let index = resource.create_buffer_non_descriptor(starter_index_size, BufferType::Index, Memory::Host, graphic.family, index_name);
 
                 vertex_buffers.push(vertex);
                 index_buffers.push(index);
             }
+
+            log::info!("Imgui Context Initialized");
 
             Self {
                 imgui,
@@ -202,6 +196,7 @@ impl ImguiContext {
             }
         }
     }
+
     pub fn get_draw_instance(&mut self, window: &Window) -> &mut imgui::Ui {
         self.platform.prepare_frame(self.imgui.io_mut(), window).expect("failed to prepare imgui");
         self.imgui.frame()
@@ -226,15 +221,15 @@ impl ImguiContext {
             let current_vertex_size = self.vertex_buffers[frame_index].size;
             let needed_vertex_size = vertices.len() as u64 * mem::size_of::<MeshImGui>() as u64;
 
-            if current_vertex_size > needed_vertex_size {
-                res.resize_buffer(&mut self.vertex_buffers[frame_index], needed_vertex_size);
+            if needed_vertex_size > current_vertex_size {
+                res.resize_buffer_non_descriptor(&mut self.vertex_buffers[frame_index], needed_vertex_size);
             }
 
             let current_index_size = self.index_buffers[frame_index].size;
             let needed_index_size = indices.len() as u64 * 2;
 
             if needed_index_size > current_index_size {
-                res.resize_buffer(&mut self.index_buffers[frame_index], needed_index_size);
+                res.resize_buffer_non_descriptor(&mut self.index_buffers[frame_index], needed_index_size);
             }
 
             let slice: &[u8] = slice::from_raw_parts(vertices.as_ptr() as *const u8, vertices.len() * mem::size_of::<imgui::DrawVert>() as usize);
@@ -250,7 +245,7 @@ impl ImguiContext {
                 .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
                 .image_view(present_image.view)
                 .store_op(vk::AttachmentStoreOp::STORE)
-                .load_op(vk::AttachmentLoadOp::CLEAR);
+                .load_op(vk::AttachmentLoadOp::LOAD);
 
             // start rendering
             self.device.cmd_begin_rendering(
@@ -277,7 +272,7 @@ impl ImguiContext {
                 .cmd_bind_vertex_buffers(cmd, 0, &[self.vertex_buffers[frame_index].buffer], &[0]);
 
             let push_constant =
-                [ImguiPushConstant { ortho_mat: Camera::ortho(draw_data.display_size[0], draw_data.display_size[1]), texture_index: 0 }];
+                [ImguiPushConstant { ortho_mat: Camera::ortho(draw_data.display_size[0], -draw_data.display_size[1]), texture_index: 0 }];
 
             let slice = { slice::from_raw_parts(push_constant.as_ptr() as *const u8, mem::size_of::<ImguiPushConstant>()) };
 
@@ -347,7 +342,6 @@ impl ImguiContext {
 
     pub fn recreate_swapchain(&mut self) {}
 }
-
 pub struct Swapchain {
     pub surface: vk::SurfaceKHR,
     pub swap: vk::SwapchainKHR,
@@ -406,11 +400,10 @@ impl VulkanContext {
     pub fn new(event_loop: &EventLoop<()>, max_frames_in_flight: usize, is_imgui: bool) -> Self {
         unsafe {
             // should remove all must do things from here or keep it here and move the not must do things to fn main
-
             let window = Arc::new(
                 WindowBuilder::new()
                     .with_title(Self::APPLICATION_NAME)
-                    .with_inner_size(winit::dpi::LogicalSize::new(f64::from(1920.0), f64::from(1080.0)))
+                    .with_inner_size(winit::dpi::LogicalSize::new(f64::from(1024), f64::from(768)))
                     .build(event_loop)
                     .unwrap(),
             );
@@ -421,6 +414,8 @@ impl VulkanContext {
                 .set_app_name("Vulkan App")
                 .set_xlib_ext()
                 .build();
+
+            log::info!("Vulkan instance is built");
             let (device, physical, graphic, transfer) = builder::DeviceBuilder::new()
                 .ext_dynamic_rendering()
                 .ext_image_cube_array()
@@ -428,6 +423,7 @@ impl VulkanContext {
                 .ext_bindless_descriptors()
                 .select_physical_device(&instance)
                 .build(&instance);
+            log::info!("device instance is built");
 
             let instance = Arc::new(instance);
             let entry = Arc::new(entry);
@@ -443,7 +439,7 @@ impl VulkanContext {
             let window_extent = vk::Extent2D { width: window.inner_size().width, height: window.inner_size().height };
 
             let mut resources = Resource::new(instance.clone(), device.clone(), graphic, allocator.clone(), debug_loader_ext.clone());
-
+            log::info!("Resources intialized");
             let mut swapchain_images = vec![];
             let mut depth_image = AllocatedImage::default();
             let present_mode = vk::PresentModeKHR::MAILBOX;
@@ -455,6 +451,8 @@ impl VulkanContext {
                     .select_sharing_mode(vk::SharingMode::EXCLUSIVE)
                     .select_presentation_mode(vk::PresentModeKHR::MAILBOX)
                     .build(&mut resources, &mut swapchain_images, &mut depth_image);
+
+            log::info!("swapchain initialized");
 
             let push_vec = vec![vk::PushConstantRange::default()
                 .size(128)
@@ -499,7 +497,7 @@ impl VulkanContext {
                     None
                 }
             };
-
+            log::info!("Vulkan context initialized");
             Self {
                 entry,
                 instance,
