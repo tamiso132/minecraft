@@ -248,13 +248,12 @@ impl Application {
 }
 
 fn main() {
-    let frequency = 0.10;
-    let seed = 52;
+    let frequency = 0.2;
+    let seed = 65.0;
     for x in 0..10 {
         for y in 0..10 {
-            let noise = SimplexNoise::two_d(x as f32, y as f32);
-            println!("Noise: {:?}", noise);
-            let height = ((noise + 1.0) * 0.5 * 256.0).round();
+            let noise = SimplexNoise::generate_noise(x as f32, y as f32, 20, 0.9);
+            let height = (noise * 256.0).round();
 
             println!("({:?},{:?}) = {:?}", x, y, height);
         }
