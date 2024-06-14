@@ -325,7 +325,7 @@ impl PipelineBuilder {
         self
     }
 
-    pub fn add_pipeline_layout(mut self, layout: vk::PipelineLayout) -> Self {
+    pub fn add_layout(mut self, layout: vk::PipelineLayout) -> Self {
         self.layout = layout;
         self
     }
@@ -340,6 +340,7 @@ impl PipelineBuilder {
         self.front_face = face;
         self
     }
+
 
     pub fn build<Ver: Vertex>(self, device: &ash::Device, vertex_module: vk::ShaderModule, fragment_module: vk::ShaderModule) -> vk::Pipeline {
         let entry_point_name = CString::new("main").unwrap();

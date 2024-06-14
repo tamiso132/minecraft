@@ -1,4 +1,4 @@
-use std::{ffi::CString, fs::File, io::Read, sync::Arc};
+use std::{ffi::CString, fs::File, io::Read, mem, slice, sync::Arc};
 
 use ash::{
     khr::swapchain,
@@ -64,7 +64,7 @@ pub fn debug_object_set_name(context: &VulkanContext, raw_object_handle: u64, ob
     }
 }
 
-pub fn load_shader(path: String) -> Vec<u8> {
+fn load_shader(path: String) -> Vec<u8> {
     println!("{:?}", path);
     let mut file = File::open(path.clone()).expect(&format!("unable to read file {}", path));
     let mut buffer = vec![];
@@ -175,6 +175,11 @@ pub fn create_shader_ext(
 }
 
 // TODO, will have to change their image layout, in the struct, when I transition images
+
+pub fn slice_as_u8<T>(data: &[T]) -> &[u8] {
+    let ptr = data.as_ptr() as *const u8;
+    unsafe { slice::from_raw_parts(ptr, mem::size_of::<T>()) }
+}
 
 pub fn transition_image_present(device: &ash::Device, cmd: vk::CommandBuffer, image: vk::Image) {
     let barrier = vec![init::image_barrier_info(
@@ -415,6 +420,9 @@ pub fn copy_to_image_from_image(
         );
     }
 }
+
+pub fn copy_to_buffer_from_buffer() {}
+
 pub fn copy_image_immediate(context: &VulkanContext, src_image: &AllocatedImage, dst_image: &AllocatedImage, extent: vk::Extent2D) {
     // TODO
 }

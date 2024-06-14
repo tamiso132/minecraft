@@ -482,7 +482,7 @@ impl Resource {
         }
     }
 
-    pub fn create_staging_buffer(&self, data: &[u8]) -> (vk::Buffer, vk_mem::Allocation) {
+    fn create_staging_buffer(&self, data: &[u8]) -> (vk::Buffer, vk_mem::Allocation) {
         let buffer_info = vk::BufferCreateInfo::default()
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .usage(vk::BufferUsageFlags::TRANSFER_SRC)
@@ -512,6 +512,12 @@ impl Resource {
 
             self.allocator.unmap_memory(&mut buffer.alloc);
         }
+    }
+
+    pub fn write_to_buffer_local(&mut self, cmd: vk::CommandBuffer, buffer: &AllocatedBuffer, data: &[u8]) {
+        let staging = self.create_staging_buffer(data);
+        let buffer_region = vk::BufferCopy::default().dst_offset(0).src_offset(0).size(data.len() as u64);
+        unsafe { self.device.cmd_copy_buffer(cmd, staging.0, buffer.buffer, &[buffer_region]) };
     }
 
     /// Only works for host visible memory

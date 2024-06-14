@@ -7,13 +7,6 @@ layout(location = 2) flat in uint inFaceIndex;
 layout(location = 3) in vec3 inFragPos;
 layout(location = 4) in vec3 camPos;
 
-struct GPUMaterial {
-    vec3 ambient;
-    float shininess;
-    vec3 diffuse;
-    vec3 specular;
-};
-
 struct Texture {
     uint faceIndices[6]; // 12-byte padding
     vec3 ambient;

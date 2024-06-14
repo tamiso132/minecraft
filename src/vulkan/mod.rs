@@ -7,7 +7,7 @@ use std::{
 
 use ash::{
     khr::dynamic_rendering,
-    vk::{self, BlendFactor, BlendOp, DescriptorType, Extent2D, PrimitiveTopology, QueueFlags, ShaderStageFlags},
+    vk::{self, BlendFactor, BlendOp, DescriptorType, Extent2D, Offset2D, PrimitiveTopology, QueueFlags, ShaderStageFlags},
 };
 use builder::{ComputePipelineBuilder, PipelineBuilder, SwapchainBuilder};
 use imgui::{draw_list, FontConfig, FontSource, TextureId};
@@ -140,7 +140,7 @@ impl ImguiContext {
 
             let pipeline = PipelineBuilder::new()
                 .add_color_format(swapchain_format)
-                .add_pipeline_layout(layout)
+                .add_layout(layout)
                 .add_topology(PrimitiveTopology::TRIANGLE_LIST)
                 .add_blend(blend_state)
                 .build::<MeshImGui>(&device, shader_vert, shader_frag);
@@ -534,7 +534,6 @@ impl VulkanContext {
             }
         }
     }
-    // TODO, fix default syncing things
 
     pub fn recreate_swapchain(&mut self, new_extent: vk::Extent2D) {
         self.window_extent = new_extent;
@@ -584,9 +583,38 @@ impl VulkanContext {
         }
     }
 
+    pub fn begin_rendering(&self) {
+        unsafe {
+            let attachment = vk::RenderingAttachmentInfo::default()
+                .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                .load_op(vk::AttachmentLoadOp::LOAD)
+                .store_op(vk::AttachmentStoreOp::STORE)
+                .image_view(self.get_swapchain_image().view);
+
+            let depth_attachment = vk::RenderingAttachmentInfo::default()
+                .image_layout(vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
+                .load_op(vk::AttachmentLoadOp::CLEAR)
+                .store_op(vk::AttachmentStoreOp::STORE)
+                .image_view(self.swapchain.depth.view);
+
+            self.device.cmd_begin_rendering(
+                self.cmds[self.current_frame],
+                &vk::RenderingInfo::default()
+                    .color_attachments(&[attachment, depth_attachment])
+                    .layer_count(1)
+                    .render_area(vk::Rect2D { offset: Offset2D::default(), extent: self.window_extent }),
+            )
+        }
+    }
+
+    pub fn end_rendering(&self) {
+        unsafe { self.device.cmd_end_rendering(self.cmds[self.current_frame as usize])};
+    }
+
     pub fn process_imgui_event(&mut self, event: &Event<()>) {
         self.imgui.as_mut().unwrap().process_event_imgui(&self.window, event);
     }
+
     pub fn end_frame_and_submit(&mut self) {
         let cmd = self.cmds[self.current_frame];
 
@@ -610,6 +638,18 @@ impl VulkanContext {
 
         self.current_frame = (self.current_frame + 1) % self.max_frames_in_flight;
         self.swapchain.image_index = (self.swapchain.image_index + 1) % self.swapchain.images.len() as u32;
+    }
+
+    pub fn get_swapchain_format(&self) -> vk::Format {
+        self.swapchain.images[0].format
+    }
+
+    pub fn get_swapchain_image(&self) -> &AllocatedImage {
+        &self.swapchain.images[self.swapchain.image_index as usize]
+    }
+
+    pub fn get_depth_format(&self) -> vk::Format {
+        self.swapchain.depth.format
     }
 }
 #[derive(Debug, Clone, Copy)]

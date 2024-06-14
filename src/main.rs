@@ -9,9 +9,12 @@ use std::{
 
 use ash::vk;
 use env_logger::Builder;
+use object::SimplexNoise;
 use vulkan::{
     builder::{self, ComputePipelineBuilder},
-    resource::AllocatedImage,
+    init,
+    mesh::VertexBlock,
+    resource::{AllocatedBuffer, AllocatedImage, BufferType, Memory},
     util, PushConstant, SkyBoxPushConstant, VulkanContext,
 };
 use winit::{
@@ -20,6 +23,7 @@ use winit::{
     window::WindowBuilder,
 };
 mod camera;
+mod object;
 mod vulkan;
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
@@ -31,6 +35,9 @@ struct Application {
 
     push_constant: SkyBoxPushConstant,
     last_frame: Instant,
+
+    pipeline: vk::Pipeline,
+    vertex_buffer: AllocatedBuffer,
 }
 
 extern crate ultraviolet as glm;
@@ -45,7 +52,22 @@ impl Application {
         let comp_skybox = util::create_shader(&vulkan.device, "shaders/spv/skybox.comp.spv".to_owned());
         let compute = ComputePipelineBuilder::new(comp_skybox).build(&vulkan.device, vulkan.pipeline_layout);
         let mut images = vec![];
+        let mesh = VertexBlock::get_mesh();
+
+        let vertex_buffer = vulkan.resources.create_buffer_non_descriptor(
+            mesh.len() as u64 * size_of::<VertexBlock>() as u64,
+            BufferType::Vertex,
+            Memory::Local,
+            vulkan.graphic.family,
+            "vertexBuffer".to_owned(),
+        );
+
         util::begin_cmd(&vulkan.device, vulkan.cmds[0]);
+
+        vulkan
+            .resources
+            .write_to_buffer_local(vulkan.cmds[0], &vertex_buffer, util::slice_as_u8(&mesh));
+
         /*Should be outside of this initilize */
         for i in 0..MAX_FRAMES_IN_FLIGHT {
             let name = format!("{}_{}", "compute_skybox", i);
@@ -65,12 +87,25 @@ impl Application {
         util::end_cmd_and_submit(&vulkan.device, vulkan.cmds[0], vulkan.graphic, vec![], vec![], vk::Fence::null());
         unsafe { vulkan.device.device_wait_idle().unwrap() };
 
+        let vertex = util::create_shader(&vulkan.device, "shaders/spv/colored_triangle.vert.spv".to_owned());
+        let frag = util::create_shader(&vulkan.device, "shaders/spv/colored_triangle.frag.spv".to_owned());
+
+        let pipeline = builder::PipelineBuilder::new()
+            .add_layout(vulkan.pipeline_layout)
+            .add_color_format(vulkan.get_swapchain_format())
+            .add_depth(vulkan.get_depth_format(), true, true, vk::CompareOp::LESS_OR_EQUAL)
+            .cull_mode(vk::CullModeFlags::BACK, vk::FrontFace::CLOCKWISE)
+            .add_topology(vk::PrimitiveTopology::TRIANGLE_LIST)
+            .build::<VertexBlock>(&vulkan.device, vertex, frag);
+
         Self {
             vulkan,
             compute,
             compute_images: images,
             push_constant: SkyBoxPushConstant::new(),
             last_frame: Instant::now(),
+            pipeline,
+            vertex_buffer,
         }
     }
 
@@ -115,7 +150,13 @@ impl Application {
 
         util::transition_image_color(&device, cmd, self.vulkan.swapchain.images[swapchain_index as usize].image);
 
-        /*Start Rendering*/
+        self.vulkan.begin_rendering();
+
+        device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
+
+        device.cmd_bind_vertex_buffers(cmd, 0, &[self.vertex_buffer.buffer], &vec![0]);
+
+        self.vulkan.end_rendering();
 
         let imgui = self.vulkan.imgui.as_mut().unwrap();
 
@@ -207,6 +248,19 @@ impl Application {
 }
 
 fn main() {
+    let frequency = 0.10;
+    let seed = 52;
+    for x in 0..10 {
+        for y in 0..10 {
+            let noise = SimplexNoise::two_d(x as f32, y as f32);
+            println!("Noise: {:?}", noise);
+            let height = ((noise + 1.0) * 0.5 * 256.0).round();
+
+            println!("({:?},{:?}) = {:?}", x, y, height);
+        }
+    }
+
+    panic!();
     let event_loop = EventLoop::new().unwrap();
     let mut application = Application::new(&event_loop);
     unsafe {

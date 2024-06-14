@@ -1,6 +1,11 @@
 use ash::vk;
 use glm::{Mat4, Vec3};
 
+pub struct GPUCamera {
+    viewproj: Mat4,
+    pos: Vec3,
+}
+
 pub struct Camera {
     pos: glm::Vec3,
     front: glm::Vec3,
@@ -57,5 +62,13 @@ impl Camera {
 
     pub fn get_pos(&self) -> glm::Vec3 {
         self.pos
+    }
+
+    pub fn get_shader_format(&self) -> GPUCamera {
+        let view = Mat4::look_at(self.pos, self.pos + self.front, self.up);
+
+        let view_proj = view * self.projection;
+
+        GPUCamera { viewproj: view_proj, pos: self.pos }
     }
 }
