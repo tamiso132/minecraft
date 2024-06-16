@@ -1,5 +1,8 @@
+use std::collections::HashMap;
+
 use ash::vk;
 use glm::{Mat4, Vec3};
+use winit::{event::WindowEvent, keyboard::SmolStr};
 
 pub struct GPUCamera {
     viewproj: Mat4,
@@ -46,6 +49,11 @@ impl Camera {
             near,
             far,
         }
+    }
+
+    pub fn process(keys: HashMap<SmolStr, bool>, delta_time: f64, mouse_x: f64, mouse_y: f64) {
+        let direction = Vec3::zero();
+        
     }
 
     pub fn get_view(&self) -> glm::Mat4 {

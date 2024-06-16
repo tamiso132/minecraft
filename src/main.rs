@@ -1,13 +1,16 @@
 #![feature(inherent_associated_types)]
 
 use std::{
+    collections::{btree_map::Keys, HashMap},
     ffi::CString,
+    ops::ControlFlow,
     os::unix::thread,
     thread::Thread,
     time::{Duration, Instant},
 };
 
 use ash::vk;
+use camera::Camera;
 use env_logger::Builder;
 use object::SimplexNoise;
 use vulkan::{
@@ -18,8 +21,10 @@ use vulkan::{
     util, PushConstant, SkyBoxPushConstant, VulkanContext,
 };
 use winit::{
-    event::{Event, WindowEvent},
-    event_loop::{EventLoop, EventLoopWindowTarget},
+    event::{ElementState, Event, WindowEvent},
+    event_loop::{self, EventLoop, EventLoopWindowTarget},
+    keyboard::SmolStr,
+    platform::modifier_supplement::KeyEventExtModifierSupplement,
     window::WindowBuilder,
 };
 mod camera;
@@ -38,6 +43,10 @@ struct Application {
 
     pipeline: vk::Pipeline,
     vertex_buffer: AllocatedBuffer,
+
+    key_pressed: HashMap<SmolStr, bool>,
+
+    cam: Camera,
 }
 
 extern crate ultraviolet as glm;
@@ -99,6 +108,7 @@ impl Application {
             .build::<VertexBlock>(&vulkan.device, vertex, frag);
 
         Self {
+            cam: Camera::new(vulkan.window_extent),
             vulkan,
             compute,
             compute_images: images,
@@ -106,6 +116,7 @@ impl Application {
             last_frame: Instant::now(),
             pipeline,
             vertex_buffer,
+            key_pressed: HashMap::new(),
         }
     }
 
@@ -196,10 +207,13 @@ impl Application {
 
     unsafe fn run(&mut self, event_loop: EventLoop<()>) {
         self.last_frame = Instant::now();
+        let mut delta_time = Duration::default();
+        let mut mouse_delta: (f64, f64);
 
         event_loop
             .run(move |event, _control_flow| {
                 self.vulkan.imgui.as_mut().unwrap().process_event_imgui(&self.vulkan.window, &event);
+                self.cam.
                 _control_flow.set_control_flow(winit::event_loop::ControlFlow::Poll);
                 match event {
                     Event::WindowEvent { event, .. } => match event {
@@ -209,23 +223,38 @@ impl Application {
                         WindowEvent::RedrawRequested => {
                             self.draw();
                         }
+                        WindowEvent::KeyboardInput { device_id, ref event, is_synthetic } => {
+                            let key = event.key_without_modifiers();
+                            let pressed = event.state == ElementState::Pressed;
+                            match key {
+                                winit::keyboard::Key::Character(x) => {
+                                    println!("key: {:?}, Pressed: {:?}", x, pressed);
+                                    self.key_pressed.entry(x).or_insert_with(|| pressed);
+                                }
 
+                                _ => {}
+                            }
+                        }
+                        WindowEvent::CursorMoved { device_id, position } => {
+                            mouse_delta = (position.x, position.y);
+                        }
                         _ => {}
                     },
                     Event::AboutToWait => {}
                     // new frame
-                    Event::NewEvents(_) => {}
+                    Event::NewEvents(_) => {
+                        let now = Instant::now();
+                        delta_time = now - self.last_frame;
+
+                        self.vulkan.imgui.as_mut().unwrap().update_delta_time(delta_time);
+                        self.last_frame = now;
+                    }
                     Event::LoopExiting => {
                         // Cleanup resources here
                     }
+
                     _ => {}
                 }
-
-                let now = Instant::now();
-                let delta_time = now - self.last_frame;
-
-                self.vulkan.imgui.as_mut().unwrap().update_delta_time(delta_time);
-                self.last_frame = now;
             })
             .unwrap();
     }
@@ -248,19 +277,22 @@ impl Application {
 }
 
 fn main() {
-    let frequency = 0.2;
-    let seed = 65.0;
-    for x in 0..10 {
-        for y in 0..10 {
-            let noise = SimplexNoise::generate_noise(x as f32, y as f32, 20, 0.9);
-            let height = (noise * 256.0).round();
+    // let frequency = 0.2;
+    // let seed = 65.0;
+    // for x in 0..10 {
+    //     for y in 0..10 {
+    //         let nx = x as f32 / 10.0 - 0.5;
+    //         let ny = y as f32 / 10.0 - 0.5;
 
-            println!("({:?},{:?}) = {:?}", x, y, height);
-        }
-    }
+    //         let height = (SimplexNoise::two_d(nx, ny) + 1.0) * 0.5;
+    //         println!("({:?},{:?}) = {:?}", x, y, height);
+    //     }
+    // }
 
-    panic!();
+    // panic!();
     let event_loop = EventLoop::new().unwrap();
+    event_loop.set_control_flow(event_loop::ControlFlow::Poll);
+
     let mut application = Application::new(&event_loop);
     unsafe {
         application.run(event_loop);

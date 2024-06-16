@@ -17,7 +17,9 @@ struct GPUTexture {
     specular: Vec3,
 }
 
-struct Chunk {}
+struct Chunk {
+    offset: u32,
+}
 
 pub struct SimplexNoise {}
 impl SimplexNoise {
