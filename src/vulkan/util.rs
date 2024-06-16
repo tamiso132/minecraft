@@ -178,7 +178,7 @@ pub fn create_shader_ext(
 
 pub fn slice_as_u8<T>(data: &[T]) -> &[u8] {
     let ptr = data.as_ptr() as *const u8;
-    unsafe { slice::from_raw_parts(ptr, mem::size_of::<T>()) }
+    unsafe { slice::from_raw_parts(ptr, data.len() * mem::size_of::<T>()) }
 }
 
 pub fn transition_image_present(device: &ash::Device, cmd: vk::CommandBuffer, image: vk::Image) {

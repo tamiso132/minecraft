@@ -24,6 +24,17 @@ pub struct VertexBlock {
     face_index: u32,
 }
 
+impl Default for VertexBlock {
+    fn default() -> Self {
+        Self {
+            pos: Default::default(),
+            face_index: Default::default(),
+            norm: Default::default(),
+            uv: Default::default(),
+        }
+    }
+}
+
 impl Vertex for VertexBlock {
     fn get_vertex_attribute_desc() -> Vec<vk::VertexInputAttributeDescription> {
         [
@@ -57,40 +68,39 @@ impl VertexBlock {
         vec![
             // Right face
             VertexBlock {
-                pos: glm::Vec3::new(0.5, 0.5, 0.5),
-                norm: glm::Vec3::new(1.0, 0.0, 0.0),
-                uv: glm::Vec2::new(1.0, 1.0),
-                face_index: 0,
-            },
-            VertexBlock {
                 pos: glm::Vec3::new(0.5, 0.5, -0.5),
                 norm: glm::Vec3::new(1.0, 0.0, 0.0),
                 uv: glm::Vec2::new(0.0, 1.0),
                 face_index: 0,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(0.5, -0.5, -0.5),
                 norm: glm::Vec3::new(1.0, 0.0, 0.0),
                 uv: glm::Vec2::new(0.0, 0.0),
                 face_index: 0,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(0.5, -0.5, -0.5),
                 norm: glm::Vec3::new(1.0, 0.0, 0.0),
                 uv: glm::Vec2::new(0.0, 0.0),
                 face_index: 0,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(0.5, -0.5, 0.5),
                 norm: glm::Vec3::new(1.0, 0.0, 0.0),
                 uv: glm::Vec2::new(1.0, 0.0),
                 face_index: 0,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(0.5, 0.5, 0.5),
                 norm: glm::Vec3::new(1.0, 0.0, 0.0),
                 uv: glm::Vec2::new(1.0, 1.0),
                 face_index: 0,
+                ..Default::default()
             },
             // Left face
             VertexBlock {
@@ -98,36 +108,42 @@ impl VertexBlock {
                 norm: glm::Vec3::new(-1.0, 0.0, 0.0),
                 uv: glm::Vec2::new(1.0, 0.0),
                 face_index: 1,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(-0.5, -0.5, -0.5),
                 norm: glm::Vec3::new(-1.0, 0.0, 0.0),
                 uv: glm::Vec2::new(0.0, 1.0),
                 face_index: 1,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(-0.5, 0.5, -0.5),
                 norm: glm::Vec3::new(-1.0, 0.0, 0.0),
                 uv: glm::Vec2::new(0.0, 0.0),
                 face_index: 1,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(-0.5, -0.5, -0.5),
                 norm: glm::Vec3::new(-1.0, 0.0, 0.0),
                 uv: glm::Vec2::new(0.0, 1.0),
                 face_index: 1,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(-0.5, 0.5, 0.5),
                 norm: glm::Vec3::new(-1.0, 0.0, 0.0),
                 uv: glm::Vec2::new(1.0, 0.0),
                 face_index: 1,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(-0.5, -0.5, 0.5),
                 norm: glm::Vec3::new(-1.0, 0.0, 0.0),
                 uv: glm::Vec2::new(1.0, 1.0),
                 face_index: 1,
+                ..Default::default()
             },
             // Top face
             VertexBlock {
@@ -135,36 +151,42 @@ impl VertexBlock {
                 norm: glm::Vec3::new(0.0, 1.0, 0.0),
                 uv: glm::Vec2::new(0.0, 1.0),
                 face_index: 2,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(0.5, 0.5, -0.5),
                 norm: glm::Vec3::new(0.0, 1.0, 0.0),
                 uv: glm::Vec2::new(1.0, 1.0),
                 face_index: 2,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(0.5, 0.5, 0.5),
                 norm: glm::Vec3::new(0.0, 1.0, 0.0),
                 uv: glm::Vec2::new(1.0, 0.0),
                 face_index: 2,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(0.5, 0.5, 0.5),
                 norm: glm::Vec3::new(0.0, 1.0, 0.0),
                 uv: glm::Vec2::new(1.0, 0.0),
                 face_index: 2,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(-0.5, 0.5, 0.5),
                 norm: glm::Vec3::new(0.0, 1.0, 0.0),
                 uv: glm::Vec2::new(0.0, 0.0),
                 face_index: 2,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(-0.5, 0.5, -0.5),
                 norm: glm::Vec3::new(0.0, 1.0, 0.0),
                 uv: glm::Vec2::new(0.0, 1.0),
                 face_index: 2,
+                ..Default::default()
             },
             // Bottom face
             VertexBlock {
@@ -172,36 +194,42 @@ impl VertexBlock {
                 norm: glm::Vec3::new(0.0, -1.0, 0.0),
                 uv: glm::Vec2::new(0.0, 1.0),
                 face_index: 3,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(0.5, -0.5, 0.5),
                 norm: glm::Vec3::new(0.0, -1.0, 0.0),
                 uv: glm::Vec2::new(1.0, 0.0),
                 face_index: 3,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(0.5, -0.5, -0.5),
                 norm: glm::Vec3::new(0.0, -1.0, 0.0),
                 uv: glm::Vec2::new(1.0, 1.0),
                 face_index: 3,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(0.5, -0.5, 0.5),
                 norm: glm::Vec3::new(0.0, -1.0, 0.0),
                 uv: glm::Vec2::new(1.0, 0.0),
                 face_index: 3,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(-0.5, -0.5, -0.5),
                 norm: glm::Vec3::new(0.0, -1.0, 0.0),
                 uv: glm::Vec2::new(0.0, 1.0),
                 face_index: 3,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(-0.5, -0.5, 0.5),
                 norm: glm::Vec3::new(0.0, -1.0, 0.0),
                 uv: glm::Vec2::new(0.0, 0.0),
                 face_index: 3,
+                ..Default::default()
             },
             // Front face
             VertexBlock {
@@ -209,36 +237,42 @@ impl VertexBlock {
                 norm: glm::Vec3::new(0.0, 0.0, 1.0),
                 uv: glm::Vec2::new(0.0, 1.0),
                 face_index: 4,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(0.5, 0.5, 0.5),
                 norm: glm::Vec3::new(0.0, 0.0, 1.0),
                 uv: glm::Vec2::new(1.0, 1.0),
                 face_index: 4,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(0.5, -0.5, 0.5),
                 norm: glm::Vec3::new(0.0, 0.0, 1.0),
                 uv: glm::Vec2::new(1.0, 0.0),
                 face_index: 4,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(0.5, -0.5, 0.5),
                 norm: glm::Vec3::new(0.0, 0.0, 1.0),
                 uv: glm::Vec2::new(1.0, 0.0),
                 face_index: 4,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(-0.5, -0.5, 0.5),
                 norm: glm::Vec3::new(0.0, 0.0, 1.0),
                 uv: glm::Vec2::new(0.0, 0.0),
                 face_index: 4,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(-0.5, 0.5, 0.5),
                 norm: glm::Vec3::new(0.0, 0.0, 1.0),
                 uv: glm::Vec2::new(0.0, 1.0),
                 face_index: 4,
+                ..Default::default()
             },
             // Back face
             VertexBlock {
@@ -246,36 +280,42 @@ impl VertexBlock {
                 norm: glm::Vec3::new(0.0, 0.0, -1.0),
                 uv: glm::Vec2::new(0.0, 1.0),
                 face_index: 5,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(0.5, 0.5, -0.5),
                 norm: glm::Vec3::new(0.0, 0.0, -1.0),
                 uv: glm::Vec2::new(1.0, 1.0),
                 face_index: 5,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(0.5, -0.5, -0.5),
                 norm: glm::Vec3::new(0.0, 0.0, -1.0),
                 uv: glm::Vec2::new(1.0, 0.0),
                 face_index: 5,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(0.5, -0.5, -0.5),
                 norm: glm::Vec3::new(0.0, 0.0, -1.0),
                 uv: glm::Vec2::new(1.0, 0.0),
                 face_index: 5,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(-0.5, -0.5, -0.5),
                 norm: glm::Vec3::new(0.0, 0.0, -1.0),
                 uv: glm::Vec2::new(0.0, 0.0),
                 face_index: 5,
+                ..Default::default()
             },
             VertexBlock {
                 pos: glm::Vec3::new(-0.5, 0.5, -0.5),
                 norm: glm::Vec3::new(0.0, 0.0, -1.0),
                 uv: glm::Vec2::new(0.0, 1.0),
                 face_index: 5,
+                ..Default::default()
             },
         ]
     }

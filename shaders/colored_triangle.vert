@@ -41,15 +41,15 @@ layout(std430, set = 0, binding = 2) readonly buffer Objects{
 
 void main() {
 
-    Object model = objects[indices.object].model[gl_InstanceIndex];
+    Object object = objects[indices.object].model[gl_InstanceIndex];
     CameraData camData = cam[indices.cam].camera;
 
     outNormal = vNormal;
     texCoord = vTexCoord;
     outFaceIndex = vFaceIndex;
     camPos = camData.pos;
-    texture_index = model.texture_index;
+    texture_index = object.texture_index;
 
-    gl_Position = camData.viewproj * model.model * vec4(vPosition, 1.0);
-    outFrag = (model.model * vec4(vPosition, 1.0)).rgb;
+    gl_Position = camData.viewproj  * vec4(vPosition, 1.0);
+    outFrag = (object.model * vec4(vPosition, 1.0)).rgb;
 }

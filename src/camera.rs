@@ -1,9 +1,73 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, mem::transmute, ops::Mul};
 
 use ash::vk;
 use glm::{Mat4, Vec3};
 use winit::{event::WindowEvent, keyboard::SmolStr};
 
+#[repr(u8)]
+pub enum Alphabet {
+    A,
+    B,
+    C,
+    D,
+    E,
+    F,
+    G,
+    H,
+    I,
+    J,
+    K,
+    L,
+    M,
+    N,
+    O,
+    P,
+    Q,
+    R,
+    S,
+    T,
+    U,
+    V,
+    W,
+    X,
+    Y,
+    Z,
+}
+
+impl From<SmolStr> for Alphabet {
+    /// Will only work for characters
+    fn from(value: SmolStr) -> Self {
+        unsafe {
+            let char = value.as_str().chars().next().unwrap() as u8;
+            let letter: Alphabet = transmute(char - 97);
+            letter
+        }
+    }
+}
+
+pub struct Controls {
+    letters: [bool; 26],
+}
+impl Controls {
+    pub fn new() -> Controls {
+        let letters = [false; 26];
+
+        Self { letters }
+    }
+
+    pub fn update_key(&mut self, letter: Alphabet, state: bool) {
+        self.letters[letter as usize] = state;
+    }
+
+    pub fn get_state(&self, letter: Alphabet) -> bool {
+        self.letters[letter as usize]
+    }
+
+    pub fn reset_state(&mut self) {
+        self.letters = [false; 26];
+    }
+}
+#[repr(C, align(16))]
 pub struct GPUCamera {
     viewproj: Mat4,
     pos: Vec3,
@@ -50,10 +114,46 @@ impl Camera {
             far,
         }
     }
+    pub fn process_keyboard(&mut self, controls: &Controls, delta_time: f64) {
+        let cam_speed = Vec3::new(2.5 * delta_time as f32, 2.5 * delta_time as f32, 2.5 * delta_time as f32);
 
-    pub fn process(keys: HashMap<SmolStr, bool>, delta_time: f64, mouse_x: f64, mouse_y: f64) {
-        let direction = Vec3::zero();
-        
+        if controls.get_state(Alphabet::W) {
+            self.pos += cam_speed * self.front;
+        }
+
+        if controls.get_state(Alphabet::S) {
+            self.pos -= cam_speed * self.front;
+        }
+
+        if controls.get_state(Alphabet::D) {
+            self.pos += self.front.cross(self.up).normalized() * cam_speed;
+        }
+        if controls.get_state(Alphabet::A) {
+            self.pos -= self.front.cross(self.up).normalized() * cam_speed;
+        }
+    }
+
+    pub fn process_mouse(&mut self, mut mouse_delta: (f64, f64)) {
+        let sensitivity = 0.1;
+
+        mouse_delta = (mouse_delta.0 * sensitivity, mouse_delta.1 * sensitivity);
+
+        self.yaw += mouse_delta.0 as f32;
+        self.pitch += mouse_delta.1 as f32 * -1.0;
+
+        if self.pitch > 89.0 {
+            self.pitch = 89.0;
+        } else if self.pitch < -89.0 {
+            self.pitch = -89.0;
+        }
+
+        let mut direction = glm::Vec3::one();
+
+        direction.x = self.yaw.to_radians().cos() * self.pitch.to_radians().cos();
+        direction.y = self.pitch.sin();
+        direction.z = self.yaw.to_radians().sin() * self.pitch.to_radians().cos();
+
+        self.front = direction.normalized();
     }
 
     pub fn get_view(&self) -> glm::Mat4 {
@@ -70,6 +170,12 @@ impl Camera {
 
     pub fn get_pos(&self) -> glm::Vec3 {
         self.pos
+    }
+
+    pub fn get_gpu_camera(&self) -> GPUCamera {
+        let viewproj = self.get_projection().mul(self.get_view());
+
+        GPUCamera { viewproj, pos: self.pos }
     }
 
     pub fn get_shader_format(&self) -> GPUCamera {

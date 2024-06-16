@@ -1,12 +1,22 @@
 use glm::Vec3;
 
 #[repr(C)]
-struct Block {
-    pos: glm::Mat4,
+pub struct GPUBlock {
+    model: glm::Mat4,
     texture_index: u32,
 }
 
-impl Block {}
+impl GPUBlock {
+    pub fn test_random_positions() -> Vec<GPUBlock> {
+        let mut blocks = vec![];
+        for i in 0..100 {
+            let model = glm::Mat4::from_translation(Vec3::new(i as f32, i as f32, 1.0));
+            blocks.push(GPUBlock { model, texture_index: 0 })
+        }
+
+        blocks
+    }
+}
 
 #[repr(C)]
 struct GPUTexture {

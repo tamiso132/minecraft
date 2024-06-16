@@ -583,11 +583,11 @@ impl VulkanContext {
         }
     }
 
-    pub fn begin_rendering(&self) {
+    pub fn begin_rendering(&self, load: vk::AttachmentLoadOp) {
         unsafe {
             let attachment = vk::RenderingAttachmentInfo::default()
                 .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                .load_op(vk::AttachmentLoadOp::LOAD)
+                .load_op(load)
                 .store_op(vk::AttachmentStoreOp::STORE)
                 .image_view(self.get_swapchain_image().view);
 
@@ -600,7 +600,8 @@ impl VulkanContext {
             self.device.cmd_begin_rendering(
                 self.cmds[self.current_frame],
                 &vk::RenderingInfo::default()
-                    .color_attachments(&[attachment, depth_attachment])
+                    .color_attachments(&[attachment])
+                    .depth_attachment(&depth_attachment)
                     .layer_count(1)
                     .render_area(vk::Rect2D { offset: Offset2D::default(), extent: self.window_extent }),
             )
@@ -608,7 +609,7 @@ impl VulkanContext {
     }
 
     pub fn end_rendering(&self) {
-        unsafe { self.device.cmd_end_rendering(self.cmds[self.current_frame as usize])};
+        unsafe { self.device.cmd_end_rendering(self.cmds[self.current_frame as usize]) };
     }
 
     pub fn process_imgui_event(&mut self, event: &Event<()>) {

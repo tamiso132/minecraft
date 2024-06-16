@@ -31,7 +31,7 @@ layout(location = 0) out vec4 outFragColor;
 
 void main() {
 
-    vec4 color = texture(textureArray, vec3(inTexCoord, materialBuffer.materials[0].faceIndices[inFaceIndex]));
+   // vec4 color = texture(textureArray, vec3(inTexCoord, materialBuffer.materials[0].faceIndices[inFaceIndex]));
 
    // vec3 lightColor = vec3(1.0f, 1.0f, 1.0f);
   //  vec3 lightPos = vec3(1, 1, 0);
@@ -65,5 +65,5 @@ void main() {
 
  //   vec3 finalColor = pow(diffuse + ambient + specular, vec3(1.0 / gamma));
 
-    outFragColor = vec4(color.xyz, 1.0f);
+    outFragColor = vec4(0.5f, 0.5f, 0.5f, 1.0f);
 }

@@ -82,6 +82,7 @@ impl AllocatedImage {
         self.alloc = image.alloc;
         self.image = image.image;
         self.sampler = image.sampler;
+        self.view = image.view;
         self.extent = image.extent;
         self.format = image.format;
         self.layout = image.layout;
@@ -322,7 +323,7 @@ impl Resource {
                 alloc: buffer.1,
                 buffer_type,
                 size: buffer_info.size,
-                index: self.counter[binding as usize] - 1,
+                index: self.counter[binding as usize],
                 descriptor_type,
                 memory: alloc_info.required_flags,
                 usage: buffer_usage_flag,
