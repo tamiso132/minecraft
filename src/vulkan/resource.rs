@@ -556,21 +556,35 @@ impl Resource {
     pub fn resize_image(&mut self, alloc_image: &mut AllocatedImage, new_extent: vk::Extent2D) {
         assert!(alloc_image.alloc.is_some(), "Resource is not created with VMA");
 
-        let (image_info, alloc_info) = init::image_info(new_extent, 4, alloc_image.memory, alloc_image.format, alloc_image.usage);
         unsafe {
+            /*Destroy */
+            self.allocator.destroy_image(alloc_image.image, alloc_image.alloc.as_mut().unwrap());
+            self.device.destroy_image_view(alloc_image.view, None);
+
+            /*Recreate */
+            let (image_info, alloc_info) = init::image_info(new_extent, 4, alloc_image.memory, alloc_image.format, alloc_image.usage);
+
             let image = self.allocator.create_image(&image_info, &alloc_info).unwrap();
 
             let image_view_info = init::image_view_info(image.0, alloc_image.format, vk::ImageAspectFlags::COLOR);
 
             let view = self.device.create_image_view(&image_view_info, None).unwrap();
 
-            self.allocator.destroy_image(alloc_image.image, alloc_image.alloc.as_mut().unwrap());
-            self.device.destroy_image_view(alloc_image.view, None);
-
             alloc_image.image = image.0;
             alloc_image.alloc = Some(image.1);
             alloc_image.view = view;
             alloc_image.extent = new_extent;
+
+            if alloc_image.layout == vk::ImageLayout::GENERAL {
+                util::begin_cmd(&self.device, self.cmd);
+                util::transition_image_general(&self.device, self.cmd, alloc_image);
+                util::end_cmd_and_submit(&self.device, self.cmd, self.graphic_queue, vec![], vec![], vk::Fence::null());
+                self.device.queue_wait_idle(self.graphic_queue.queue).unwrap();
+            }
+            let image_descriptor = init::image_descriptor_info(alloc_image.layout, alloc_image.view, alloc_image.sampler);
+
+            /*Update Bind */
+            self.update_descriptor_bind(alloc_image.index as u32, alloc_image.descriptor_type, alloc_image.binding, image_descriptor, vec![]);
         }
     }
 
@@ -639,12 +653,12 @@ impl Resource {
 
         let descriptor_write = vk::WriteDescriptorSet::default()
             .descriptor_type(descriptor_type)
-            .descriptor_count(1)
             .dst_binding(binding as u32)
             .dst_set(self.set)
             .dst_array_element(index)
             .image_info(&image_descriptor)
-            .buffer_info(&buffer_descriptor);
+            .buffer_info(&buffer_descriptor)
+            .descriptor_count(1);
 
         unsafe { self.device.update_descriptor_sets(&vec![descriptor_write], &vec![]) };
     }

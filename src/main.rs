@@ -24,7 +24,7 @@ use vulkan::{
     PushConstant, SkyBoxPushConstant, VulkanContext,
 };
 use winit::{
-    event::{ElementState, Event, WindowEvent},
+    event::{self, ElementState, Event, WindowEvent},
     event_loop::{self, EventLoop, EventLoopWindowTarget},
     keyboard::{Key, KeyCode, NamedKey, SmolStr},
     platform::modifier_supplement::KeyEventExtModifierSupplement,
@@ -55,6 +55,7 @@ struct Application {
     focus: bool,
 
     object_count: u32,
+    resize: bool,
 }
 
 #[repr(C, align(16))]
@@ -165,8 +166,8 @@ impl Application {
             .add_topology(vk::PrimitiveTopology::TRIANGLE_LIST)
             .build::<VertexBlock>(&vulkan.device, vertex, frag);
 
-        vulkan.window.set_cursor_grab(CursorGrabMode::Confined).unwrap();
-        vulkan.window.set_cursor_visible(false);
+        vulkan.window.set_cursor_grab(CursorGrabMode::None).unwrap();
+        vulkan.window.set_cursor_visible(true);
         vulkan.window.focus_window();
         Self {
             cam: Camera::new(vulkan.window_extent),
@@ -179,13 +180,19 @@ impl Application {
             key_pressed: HashMap::new(),
             controls: Controls::new(),
             frame_data,
-            focus: true,
+            focus: false,
             object_count: objects.len() as u32,
+            resize: false,
         }
     }
 
     unsafe fn draw(&mut self) {
-        self.vulkan.prepare_frame();
+        self.vulkan.prepare_frame(&mut self.resize);
+
+        if self.resize == true {
+            self.recreate_swapchain();
+            self.vulkan.prepare_frame(&mut self.resize);
+        }
 
         let device = &self.vulkan.device;
         let frame_index = self.vulkan.current_frame;
@@ -293,7 +300,9 @@ impl Application {
             set,
         );
 
-        self.vulkan.end_frame_and_submit();
+        if self.vulkan.end_frame_and_submit() {
+            self.resize = true;
+        }
 
         let now = Instant::now();
 
@@ -328,6 +337,9 @@ impl Application {
                         WindowEvent::CloseRequested => {
                             _control_flow.exit();
                         }
+                        WindowEvent::Resized(extent) => {
+                            self.resize = true;
+                        }
                         WindowEvent::RedrawRequested => {
                             self.draw();
                         }
@@ -335,10 +347,10 @@ impl Application {
                         _ => {}
                     },
                     Event::DeviceEvent { device_id, ref event } => match event {
-                        winit::event::DeviceEvent::MouseMotion { delta } => {
+                        event::DeviceEvent::MouseMotion { delta } => {
                             self.cam.process_mouse(*delta);
                         }
-                        winit::event::DeviceEvent::Key(x) => match x.physical_key {
+                        event::DeviceEvent::Key(x) => match x.physical_key {
                             winit::keyboard::PhysicalKey::Code(keycode) => {
                                 self.controls.update_key(keycode, x.state == ElementState::Pressed);
 
@@ -370,6 +382,7 @@ impl Application {
 
     // need to rebuild the swapchain and any resources that depend on the window extent
     pub fn recreate_swapchain(&mut self) {
+        log::info!("Recreating swapchain");
         unsafe {
             self.vulkan.device.device_wait_idle().unwrap();
         }
@@ -378,10 +391,13 @@ impl Application {
 
         self.vulkan.recreate_swapchain(extent);
 
+        log::info!("recreate computation images");
+
         // TODO, recreate my general image
         for image in &mut self.frame_data {
             self.vulkan.resources.resize_image(&mut image.compute_image, extent);
         }
+        self.resize = false;
     }
 }
 

@@ -147,9 +147,6 @@ impl<'a> DeviceBuilder<'a> {
     }
 
     pub fn build(mut self, instance: &ash::Instance) -> (ash::Device, vk::PhysicalDevice, TKQueue, TKQueue) {
-        for ext in &self.extensions {
-            println!("{:?}\n", ext.as_c_str());
-        }
         let raw_ext: Vec<*const i8> = self.extensions.iter().map(|raw| raw.as_ptr()).collect();
 
         let priority = [1.0 as f32];
@@ -341,7 +338,6 @@ impl PipelineBuilder {
         self
     }
 
-
     pub fn build<Ver: Vertex>(self, device: &ash::Device, vertex_module: vk::ShaderModule, fragment_module: vk::ShaderModule) -> vk::Pipeline {
         let entry_point_name = CString::new("main").unwrap();
 
@@ -466,7 +462,7 @@ pub struct SwapchainBuilder {
     transform: vk::SurfaceTransformFlagsKHR,
 
     surface: vk::SurfaceKHR,
-    surface_loader: ash::khr::surface::Instance,
+    surface_loader: Arc<ash::khr::surface::Instance>,
 
     extent: Extent2D,
 }
@@ -479,6 +475,7 @@ impl SwapchainBuilder {
         physical: vk::PhysicalDevice,
         allocator: Arc<vk_mem::Allocator>,
         window: Arc<winit::window::Window>,
+        surface_loader: Option<(Arc<surface::Instance>, vk::SurfaceKHR)>,
     ) -> SwapchainBuilder {
         let surface = ash_window::create_surface(
             entry.as_ref(),
@@ -488,17 +485,25 @@ impl SwapchainBuilder {
             None,
         )
         .expect("surface failed");
-        let surface_loader = ash::khr::surface::Instance::new(&entry, &instance);
+        let s = {
+            if surface_loader.is_some() {
+                surface_loader.unwrap()
+            } else {
+                let surface = ash_window::create_surface(
+                    entry.as_ref(),
+                    instance.as_ref(),
+                    window.display_handle().unwrap().as_raw(),
+                    window.window_handle().unwrap().as_raw(),
+                    None,
+                )
+                .unwrap();
+                let surface_loader = Arc::new(ash::khr::surface::Instance::new(&entry, &instance));
 
-        let surface_capabilities = surface_loader.get_physical_device_surface_capabilities(physical, surface).unwrap();
+                (surface_loader, surface)
+            }
+        };
 
-        let formats = surface_loader.get_physical_device_surface_formats(physical, surface).unwrap();
-
-        // TODO, check so the format chosen works and have default value
-
-        for format in formats {
-            println!("Available formats {:?}\nWith Color space {:?}\n\n", format.format, format.color_space);
-        }
+        let surface_capabilities = s.0.get_physical_device_surface_capabilities(physical, s.1).unwrap();
 
         let min_image_count = surface_capabilities.min_image_count;
 
@@ -510,7 +515,7 @@ impl SwapchainBuilder {
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             image_format: vk::Format::R8G8B8A8_SRGB,
             surface,
-            surface_loader,
+            surface_loader: s.0,
             physical,
             extent: Extent2D { width: 1920, height: 1080 },
             instance,
@@ -548,13 +553,67 @@ impl SwapchainBuilder {
         self.sharing_mode = sharing_mode;
         self
     }
+    pub unsafe fn rebuild(
+        self,
+        swapchain_loader: &swapchain::Device,
+        res: &mut Resource,
+        swapchain_images_out: &mut Vec<AllocatedImage>,
+        depth_image_out: &mut AllocatedImage,
+    ) -> vk::SwapchainKHR {
+        let swapchain_info = vk::SwapchainCreateInfoKHR::default()
+            .flags(vk::SwapchainCreateFlagsKHR::empty())
+            .image_color_space(vk::ColorSpaceKHR::SRGB_NONLINEAR)
+            .image_extent(self.extent)
+            .image_format(self.image_format)
+            .image_sharing_mode(self.sharing_mode)
+            .min_image_count(self.min_image_count)
+            .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_DST)
+            .image_array_layers(1)
+            .surface(self.surface)
+            .pre_transform(self.transform)
+            .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
+            .clipped(true);
 
+        let swapchain = swapchain_loader
+            .create_swapchain(&swapchain_info, None)
+            .expect("failed to create a swapchain");
+
+        let swapchain_images = swapchain_loader.get_swapchain_images(swapchain).unwrap();
+
+        for image in swapchain_images.iter() {
+            let create_view_info = vk::ImageViewCreateInfo::default()
+                .view_type(vk::ImageViewType::TYPE_2D)
+                .format(self.image_format)
+                .components(init::image_components_rgba())
+                .subresource_range(init::image_subresource_info(vk::ImageAspectFlags::COLOR))
+                .image(*image);
+
+            let view = self.device.create_image_view(&create_view_info, None).unwrap();
+            
+            swapchain_images_out.push(AllocatedImage {
+                descriptor_type: vk::DescriptorType::STORAGE_IMAGE,
+                alloc: None,
+                image: *image,
+                view,
+                format: self.image_format,
+                layout: ImageLayout::UNDEFINED,
+                extent: self.extent,
+                ..Default::default()
+            });
+        }
+
+        let allocated_depth = res.create_depth_image(vk::Format::D16_UNORM, self.extent);
+
+        depth_image_out.set(allocated_depth);
+
+        swapchain
+    }
     pub fn build(
         self,
         res: &mut Resource,
         swapchain_images_out: &mut Vec<AllocatedImage>,
         depth_image_out: &mut AllocatedImage,
-    ) -> (swapchain::Device, vk::SwapchainKHR, surface::Instance, vk::SurfaceKHR) {
+    ) -> (swapchain::Device, vk::SwapchainKHR, Arc<surface::Instance>, vk::SurfaceKHR) {
         unsafe {
             let swapchain_info = vk::SwapchainCreateInfoKHR::default()
                 .flags(vk::SwapchainCreateFlagsKHR::empty())
@@ -632,7 +691,14 @@ unsafe extern "system" fn vulkan_debug_callback(
     if message_type == vk::DebugUtilsMessageTypeFlagsEXT::GENERAL {
         return vk::FALSE;
     }
-    println!("{message_severity:?}:\n{message_type:?} [{message_id_name} ({message_id_number})] : {message}\n",);
+
+    if message_severity == vk::DebugUtilsMessageSeverityFlagsEXT::INFO {
+        log::info!("{message_type:?} [{message_id_name} ({message_id_number})] : {message}\n",);
+    } else if message_severity == vk::DebugUtilsMessageSeverityFlagsEXT::WARNING {
+        log::warn!("{message_type:?} [{message_id_name} ({message_id_number})] : {message}\n",);
+    } else if message_severity == vk::DebugUtilsMessageSeverityFlagsEXT::ERROR {
+        log::error!("{message_type:?} [{message_id_name} ({message_id_number})] : {message}\n",);
+    }
 
     vk::FALSE
 }

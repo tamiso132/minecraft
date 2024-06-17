@@ -2,6 +2,7 @@ use std::{ffi::CString, fs::File, io::Read, mem, slice, sync::Arc};
 
 use ash::{
     khr::swapchain,
+    prelude::VkResult,
     vk::{
         self, AccessFlags, BufferImageCopy, CommandBufferLevel, CommandPool, DependencyFlags, ImageAspectFlags, ImageLayout, Offset3D,
         ShaderStageFlags, SubmitInfo,
@@ -65,7 +66,6 @@ pub fn debug_object_set_name(context: &VulkanContext, raw_object_handle: u64, ob
 }
 
 fn load_shader(path: String) -> Vec<u8> {
-    println!("{:?}", path);
     let mut file = File::open(path.clone()).expect(&format!("unable to read file {}", path));
     let mut buffer = vec![];
     file.read_to_end(&mut buffer).expect("unable to read file");
@@ -167,7 +167,6 @@ pub fn create_shader_ext(
     let name = CString::new("main").unwrap();
 
     let layouts = [descriptor_layout];
-    println!("code size = {:?}\n", &data.len());
     let shader_info = init::shader_create_info(shader_stage).code(&data).name(&name).set_layouts(&layouts);
 
     let shader = shader_loader.create_shaders_ext(shader_info).expect("failed to create a shader");
@@ -294,18 +293,16 @@ pub fn present_submit(
     swapchain: vk::SwapchainKHR,
     swapchain_index: u32,
     wait_semp: Vec<vk::Semaphore>,
-) {
+) -> VkResult<bool> {
     unsafe {
-        swapchain_loader
-            .queue_present(
-                graphic.queue,
-                &vk::PresentInfoKHR::default()
-                    .swapchains(&[swapchain])
-                    .wait_semaphores(&wait_semp)
-                    .image_indices(&[swapchain_index as u32]),
-            )
-            .unwrap()
-    };
+        swapchain_loader.queue_present(
+            graphic.queue,
+            &vk::PresentInfoKHR::default()
+                .swapchains(&[swapchain])
+                .wait_semaphores(&wait_semp)
+                .image_indices(&[swapchain_index as u32]),
+        )
+    }
 }
 
 pub fn copy_to_image_from_buffer(device: &ash::Device, cmd: vk::CommandBuffer, dst_image: &AllocatedImage, buffer: (vk::Buffer, vk_mem::Allocation)) {
@@ -328,6 +325,7 @@ pub fn copy_to_image_from_buffer(device: &ash::Device, cmd: vk::CommandBuffer, d
         device.cmd_copy_buffer_to_image(cmd, buffer.0, dst_image.image, dst_image.layout, &copy_region);
     }
 }
+
 // TODO, make this more general to use, Only works for general to color attachment but easy fix
 pub fn copy_to_image_from_image(
     device: &ash::Device,

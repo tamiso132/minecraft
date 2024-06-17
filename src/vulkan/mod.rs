@@ -160,7 +160,6 @@ impl ImguiContext {
 
             let texture = imgui::Textures::new();
 
-            // TODO create vertex/index buffers
             let mut vertex_buffers = vec![];
             let mut index_buffers = vec![];
 
@@ -339,8 +338,6 @@ impl ImguiContext {
     pub fn process_event_imgui(&mut self, window: &winit::window::Window, event: &Event<()>) {
         self.platform.handle_event(self.imgui.io_mut(), window, event);
     }
-
-    pub fn recreate_swapchain(&mut self) {}
 }
 pub struct Swapchain {
     pub surface: vk::SurfaceKHR,
@@ -373,8 +370,8 @@ pub struct VulkanContext {
 
     pub debug_messenger: vk::DebugUtilsMessengerEXT,
 
-    pub swapchain_loader: ash::khr::swapchain::Device,
-    pub surface_loader: ash::khr::surface::Instance,
+    pub swapchain_loader: Arc<ash::khr::swapchain::Device>,
+    pub surface_loader: Arc<ash::khr::surface::Instance>,
     pub debug_loader: Option<ash::ext::debug_utils::Instance>,
 
     pub debug_loader_ext: DebugLoaderEXT,
@@ -445,7 +442,7 @@ impl VulkanContext {
             let present_mode = vk::PresentModeKHR::MAILBOX;
 
             let (swapchain_loader, swapchain, surface_loader, surface) =
-                builder::SwapchainBuilder::new(entry.clone(), device.clone(), instance.clone(), physical, allocator.clone(), window.clone())
+                builder::SwapchainBuilder::new(entry.clone(), device.clone(), instance.clone(), physical, allocator.clone(), window.clone(), None)
                     .add_extent(window_extent)
                     .select_image_format(vk::Format::B8G8R8A8_SRGB)
                     .select_sharing_mode(vk::SharingMode::EXCLUSIVE)
@@ -513,7 +510,7 @@ impl VulkanContext {
                 graphic,
                 transfer,
 
-                swapchain_loader,
+                swapchain_loader: Arc::new(swapchain_loader),
                 surface_loader,
 
                 debug_messenger: debug_callback,
@@ -545,6 +542,7 @@ impl VulkanContext {
                 self.physical,
                 self.allocator.clone(),
                 self.window.clone(),
+                Some((self.surface_loader.clone(), self.swapchain.surface.clone())),
             )
             .add_extent(new_extent)
             .select_image_format(self.swapchain.images[0].format)
@@ -552,8 +550,8 @@ impl VulkanContext {
             .select_sharing_mode(vk::SharingMode::EXCLUSIVE);
 
             self.swapchain_loader.destroy_swapchain(self.swapchain.swap, None);
+
             for image in &mut self.swapchain.images {
-                self.device.destroy_image(image.image, None);
                 self.device.destroy_image_view(image.view, None);
             }
 
@@ -561,11 +559,27 @@ impl VulkanContext {
             self.allocator
                 .destroy_image(self.swapchain.depth.image, &mut self.swapchain.depth.alloc.as_mut().unwrap());
 
-            builder.build(&mut self.resources, &mut self.swapchain.images, &mut self.swapchain.depth);
+            self.swapchain.swap = builder.rebuild(&self.swapchain_loader, &mut self.resources, &mut self.swapchain.images, &mut self.swapchain.depth);
+
+            self.recreate_fences();
         }
     }
 
-    pub fn prepare_frame(&mut self) {
+    pub fn recreate_fences(&mut self) {
+        for i in 0..self.queue_done.len() {
+            unsafe {
+                self.device.destroy_fence(self.queue_done[i], None);
+                self.device.destroy_semaphore(self.aquired_semp[i], None);
+                self.device.destroy_semaphore(self.render_done_signal[i], None);
+
+                self.queue_done[i] = util::create_fence(&self.device);
+                self.aquired_semp[i] = util::create_semphore(&self.device);
+                self.render_done_signal[i] = util::create_semphore(&self.device);
+            }
+        }
+    }
+
+    pub fn prepare_frame(&mut self, resize: &mut bool) {
         unsafe {
             self.device
                 .wait_for_fences(&[self.queue_done[self.current_frame]], true, u64::MAX - 1)
@@ -574,12 +588,18 @@ impl VulkanContext {
 
             let signal_image_aquired = self.aquired_semp[self.current_frame];
 
-            (self.swapchain.image_index, _) = self
+            let aquire_result = self
                 .swapchain_loader
-                .acquire_next_image(self.swapchain.swap, 100000, signal_image_aquired, vk::Fence::null())
-                .unwrap();
+                .acquire_next_image(self.swapchain.swap, 100000, signal_image_aquired, vk::Fence::null());
 
-            util::begin_cmd(&self.device, self.cmds[self.current_frame]);
+            if aquire_result.is_err() {
+                if aquire_result.err().unwrap() == vk::Result::ERROR_OUT_OF_DATE_KHR {
+                    *resize = true;
+                }
+            } else {
+                (self.swapchain.image_index, _) = aquire_result.unwrap();
+                util::begin_cmd(&self.device, self.cmds[self.current_frame]);
+            }
         }
     }
 
@@ -616,7 +636,7 @@ impl VulkanContext {
         self.imgui.as_mut().unwrap().process_event_imgui(&self.window, event);
     }
 
-    pub fn end_frame_and_submit(&mut self) {
+    pub fn end_frame_and_submit(&mut self) -> bool {
         let cmd = self.cmds[self.current_frame];
 
         util::transition_image_present(&self.device, cmd, self.swapchain.images[self.swapchain.image_index as usize].image);
@@ -629,7 +649,7 @@ impl VulkanContext {
             vec![self.aquired_semp[self.current_frame]],
             self.queue_done[self.current_frame],
         );
-        util::present_submit(
+        let error = util::present_submit(
             &self.swapchain_loader,
             self.graphic,
             self.swapchain.swap,
@@ -637,8 +657,20 @@ impl VulkanContext {
             vec![self.render_done_signal[self.current_frame]],
         );
 
+        if error.is_err() {
+            let er = error.err().unwrap();
+            if er == vk::Result::ERROR_OUT_OF_DATE_KHR {
+                return true;
+            } else {
+                println!("error: {:?}", er);
+                panic!("Present error that isnt out of date");
+            }
+        }
+
         self.current_frame = (self.current_frame + 1) % self.max_frames_in_flight;
         self.swapchain.image_index = (self.swapchain.image_index + 1) % self.swapchain.images.len() as u32;
+
+        false
     }
 
     pub fn get_swapchain_format(&self) -> vk::Format {
