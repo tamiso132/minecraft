@@ -50,6 +50,6 @@ void main() {
     camPos = camData.pos;
     texture_index = object.texture_index;
 
-    gl_Position = camData.viewproj  * vec4(vPosition, 1.0);
+    gl_Position = camData.viewproj * object.model * vec4(vPosition, 1.0);
     outFrag = (object.model * vec4(vPosition, 1.0)).rgb;
 }
