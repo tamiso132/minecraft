@@ -5,12 +5,15 @@ use std::{
     sync::Arc,
 };
 
-use ash::vk::{self, BufferUsageFlags, DebugUtilsObjectNameInfoEXT, DescriptorType, ImageLayout, ImageUsageFlags, MemoryPropertyFlags};
+use ash::vk::{
+    self, BufferUsageFlags, DebugUtilsObjectNameInfoEXT, DescriptorType, Extent2D, Extent3D, ImageLayout, ImageSubresourceRange, ImageUsageFlags,
+    MemoryPropertyFlags,
+};
 use vk_mem::Alloc;
 
 use crate::vulkan::{util, VulkanContext};
 
-use super::{init, loader::DebugLoaderEXT, TKQueue};
+use super::{init, loader::DebugLoaderEXT, util::TextureArray, TKQueue};
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,6 +74,7 @@ pub struct AllocatedImage {
     pub memory: vk::MemoryPropertyFlags,
     pub usage: vk::ImageUsageFlags,
     pub descriptor_type: vk::DescriptorType,
+    pub layers: u32,
 }
 
 impl AllocatedImage {
@@ -89,6 +93,7 @@ impl AllocatedImage {
         self.memory = image.memory;
         self.usage = image.usage;
         self.descriptor_type = image.descriptor_type;
+        self.layers = image.layers;
     }
 }
 
@@ -107,6 +112,7 @@ impl Default for AllocatedImage {
             usage: vk::ImageUsageFlags::empty(),
             binding: Binding::UNDEFINED,
             index: 0,
+            layers: 1,
         }
     }
 }
@@ -367,6 +373,7 @@ impl Resource {
                 memory: vk::MemoryPropertyFlags::DEVICE_LOCAL,
                 usage,
                 descriptor_type: vk::DescriptorType::from_raw(0),
+                layers: 1,
             }
         }
     }
@@ -400,23 +407,19 @@ impl Resource {
                 memory,
                 usage,
                 binding: Binding::CombinedImage,
+                layers: 1,
             };
 
             util::begin_cmd(&self.device, self.cmd);
 
-            util::transition_image_transfer(&self.device, self.cmd, image.image);
-
-            image.layout = vk::ImageLayout::TRANSFER_DST_OPTIMAL;
+            util::transition_image_transfer(&self.device, self.cmd, &mut image);
 
             util::copy_to_image_from_buffer(&self.device, self.cmd, &image, (staging_buffer, staging_alloc));
 
-            util::transition_image_shader_only(&self.device, self.cmd, image.image);
-
-            image.layout = vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+            util::transition_image_shader_only(&self.device, self.cmd, &mut image);
 
             util::end_cmd_and_submit(&self.device, self.cmd, self.graphic_queue, vec![], vec![], vk::Fence::null());
 
-            // TODO, bind to descriptor
             // TODO, fix this into returning a "promise", and they can await it when they need the texture.
             // there is also the option of queing up all the create textures.
             self.device.device_wait_idle().unwrap();
@@ -424,6 +427,68 @@ impl Resource {
             let image_descriptor = init::image_descriptor_info(image.layout, image.view, image.sampler);
 
             // gonna remove this later when I refactor out imgui from using this
+            self.bind_to_descriptor(&mut image.index, image.descriptor_type, image.binding, image_descriptor, vec![]);
+
+            image
+        }
+    }
+
+    pub fn create_texture_array(&mut self, data: TextureArray) -> AllocatedImage {
+        let grid_size = data.grid;
+        let layers = (data.dimensions.0 / grid_size) * (data.dimensions.1 / grid_size);
+        let extent = Extent2D { width: grid_size, height: grid_size };
+        let memory = vk::MemoryPropertyFlags::DEVICE_LOCAL;
+        let usage = vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED;
+
+        let (image_info, alloc_info) =
+            init::image_info(Extent2D { width: grid_size, height: grid_size }, 4, memory, vk::Format::R8G8B8A8_UNORM, usage);
+
+        let image_info = image_info.array_layers(layers);
+
+        unsafe {
+            let texture_image = self.allocator.create_image(&image_info, &alloc_info).unwrap();
+
+            let image_sub_range = init::image_subresource_info(vk::ImageAspectFlags::COLOR).layer_count(layers);
+
+            let view_info = init::image_view_info(texture_image.0, image_info.format, vk::ImageAspectFlags::COLOR)
+                .subresource_range(image_sub_range)
+                .view_type(vk::ImageViewType::TYPE_2D_ARRAY);
+
+            let view = self.device.create_image_view(&view_info, None).unwrap();
+
+            let sampler = util::create_sampler(&self.device, vk::Filter::LINEAR, vk::SamplerAddressMode::REPEAT);
+
+            let mut image = AllocatedImage {
+                alloc: Some(texture_image.1),
+                image: texture_image.0,
+                view,
+                extent,
+                format: view_info.format,
+                layout: vk::ImageLayout::UNDEFINED,
+                descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+                index: 0,
+                sampler,
+                memory,
+                usage,
+                binding: Binding::CombinedImage,
+                layers,
+            };
+            util::begin_cmd(&self.device, self.cmd);
+
+            util::transition_image_transfer(&self.device, self.cmd, &mut image);
+
+            let staging = self.create_staging_buffer(&data.data);
+
+            util::copy_to_image_array_from_buffer(&self.device, self.cmd, &image, staging, layers, data);
+
+            util::transition_image_shader_only(&self.device, self.cmd, &mut image);
+
+            util::end_cmd_and_submit(&self.device, self.cmd, self.graphic_queue, vec![], vec![], vk::Fence::null());
+
+            self.device.device_wait_idle().unwrap();
+
+            let image_descriptor = init::image_descriptor_info(image.layout, image.view, image.sampler);
+
             self.bind_to_descriptor(&mut image.index, image.descriptor_type, image.binding, image_descriptor, vec![]);
 
             image
@@ -460,6 +525,7 @@ impl Resource {
                 usage: image_usage,
                 sampler: vk::Sampler::null(),
                 binding: Binding::StorageImage,
+                layers: 1,
             };
             self.debug_loader
                 .set_debug_util_object_name_ext(vk::DebugUtilsObjectNameInfoEXT::default().object_handle(image.0).object_name(&name))

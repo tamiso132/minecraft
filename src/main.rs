@@ -56,6 +56,22 @@ struct Application {
 
     object_count: u32,
     resize: bool,
+
+    texture_atlas: AllocatedImage,
+}
+struct Index{
+    uint cam; // uniform buffer index
+    uint object; // storage buffer index
+    uint texture; // normal sampler2DArray index
+    uint normal; // normal sampler2DArray index
+    uint material; // material buffer index
+  };
+struct GPUIndex{
+    cam: u32,
+    object: u32,
+    texture: u32,
+    normal: u32,
+    material: u32,
 }
 
 #[repr(C, align(16))]
@@ -113,6 +129,10 @@ impl Application {
                 }
             }
         }
+
+        let texture_loaded = util::load_texture_array("texture_atlas_0.png", 64);
+
+        let texture_atlas = vulkan.resources.create_texture_array(texture_loaded);
 
         /*Should be outside of this initilize */
         for i in 0..MAX_FRAMES_IN_FLIGHT {
@@ -183,6 +203,7 @@ impl Application {
             focus: false,
             object_count: objects.len() as u32,
             resize: false,
+            texture_atlas,
         }
     }
 

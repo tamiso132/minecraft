@@ -1,5 +1,5 @@
 #version 460
-
+#include "bindless.glsl"
 // shader input
 layout(location = 0) in vec3 inNormal;
 layout(location = 1) in vec2 inTexCoord;
@@ -7,31 +7,37 @@ layout(location = 2) flat in uint inFaceIndex;
 layout(location = 3) in vec3 inFragPos;
 layout(location = 4) in vec3 camPos;
 
-struct Texture {
-    uint faceIndices[6]; // 12-byte padding
-    vec3 ambient;
-    float shininess;
-    vec3 diffuse;
-    vec3 specular;
+struct Index{
+  uint cam; // uniform buffer index
+  uint object; // storage buffer index
+  uint texture; // normal sampler2DArray index
+  uint normal; // normal sampler2DArray index
+  uint material; // material buffer index
 };
 
+layout(push_constant) uniform constants {
+  uint index;
+} push;
 
-layout(set = 0, binding = 0)  uniform sampler2DArray textureArray;
+layout(set = 0, binding = 3) uniform Indices{
+  Index index;
+}indices[];
 
-layout(set = 0, binding = 1)  uniform sampler2DArray normalTextureArray;
 
-layout(std140, set = 0, binding = 2) readonly buffer MaterialBuffer {
-    Texture materials[]; // Declare as an array
-} 
-materialBuffer;
-
+layout(set = 0, binding = 0)  uniform sampler2DArray samplerArray[];
 
 layout(location = 0) out vec4 outFragColor;
 
 
 void main() {
 
-   // vec4 color = texture(textureArray, vec3(inTexCoord, materialBuffer.materials[0].faceIndices[inFaceIndex]));
+  Index index = indices[push.index].index;
+
+ // sampler2DArray textureArray =  samplerArray[1];
+ // sampler2DArray normalTextureArray = samplerArray[index.normal];
+  
+
+    vec4 color = texture(samplerArray[index.texture], vec3(inTexCoord, 0));
 
    // vec3 lightColor = vec3(1.0f, 1.0f, 1.0f);
   //  vec3 lightPos = vec3(1, 1, 0);
@@ -65,5 +71,5 @@ void main() {
 
  //   vec3 finalColor = pow(diffuse + ambient + specular, vec3(1.0 / gamma));
 
-    outFragColor = vec4(0.5f, 0.5f, 0.5f, 1.0f);
+    outFragColor = vec4(color.rgb, 1.0f);
 }

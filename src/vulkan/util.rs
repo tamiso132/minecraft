@@ -17,6 +17,9 @@ use super::{
     resource::AllocatedImage,
 };
 
+pub const SHADER_FOLDER: &'static str = "shaders/spv/";
+pub const TEXTURE_FOLDER: &'static str = "assets/textures/";
+
 pub fn create_sampler(device: &ash::Device, filter: vk::Filter, sampler_adress_mode: vk::SamplerAddressMode) -> vk::Sampler {
     let sampler_info = vk::SamplerCreateInfo::default()
         .address_mode_u(sampler_adress_mode)
@@ -63,14 +66,6 @@ pub fn debug_object_set_name(context: &VulkanContext, raw_object_handle: u64, ob
     unsafe {
         context.debug_loader_ext.set_debug_util_object_name_ext(debug_info).unwrap();
     }
-}
-
-fn load_shader(path: String) -> Vec<u8> {
-    let mut file = File::open(path.clone()).expect(&format!("unable to read file {}", path));
-    let mut buffer = vec![];
-    file.read_to_end(&mut buffer).expect("unable to read file");
-
-    return buffer;
 }
 
 pub fn pad_size_to_min_aligment(size: u32, min_aligment: u32) -> u32 {
@@ -223,32 +218,40 @@ pub fn transition_image_color(device: &ash::Device, cmd: vk::CommandBuffer, imag
     unsafe { device.cmd_pipeline_barrier(cmd, src_stage, dst_stage, vk::DependencyFlags::empty(), &vec![], &vec![], &barrier) }
 }
 
-pub fn transition_image_transfer(device: &ash::Device, cmd: vk::CommandBuffer, image: vk::Image) {
-    let barrier = vec![init::image_barrier_info(
-        image,
+pub fn transition_image_transfer(device: &ash::Device, cmd: vk::CommandBuffer, image: &mut AllocatedImage) {
+    let mut barrier = vec![init::image_barrier_info(
+        image.image,
         vk::ImageLayout::UNDEFINED,
         vk::ImageLayout::TRANSFER_DST_OPTIMAL,
         vk::AccessFlags::NONE_KHR,
         vk::AccessFlags::TRANSFER_WRITE,
     )];
 
+    barrier[0].subresource_range.layer_count = image.layers;
+
     let (src_stage, dst_stage) = (vk::PipelineStageFlags::TOP_OF_PIPE, vk::PipelineStageFlags::TRANSFER);
 
     unsafe { device.cmd_pipeline_barrier(cmd, src_stage, dst_stage, vk::DependencyFlags::empty(), &vec![], &vec![], &barrier) }
+
+    image.layout = vk::ImageLayout::TRANSFER_DST_OPTIMAL;
 }
 
-pub fn transition_image_shader_only(device: &ash::Device, cmd: vk::CommandBuffer, image: vk::Image) {
-    let barrier = vec![init::image_barrier_info(
-        image,
+pub fn transition_image_shader_only(device: &ash::Device, cmd: vk::CommandBuffer, image: &mut AllocatedImage) {
+    let mut barrier = vec![init::image_barrier_info(
+        image.image,
         vk::ImageLayout::TRANSFER_DST_OPTIMAL,
         vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         vk::AccessFlags::TRANSFER_WRITE,
         vk::AccessFlags::SHADER_READ,
     )];
 
+    barrier[0].subresource_range.layer_count = image.layers;
+
     let (src_stage, dst_stage) = (vk::PipelineStageFlags::TRANSFER, vk::PipelineStageFlags::FRAGMENT_SHADER);
 
     unsafe { device.cmd_pipeline_barrier(cmd, src_stage, dst_stage, vk::DependencyFlags::empty(), &vec![], &vec![], &barrier) }
+
+    image.layout = vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
 }
 
 pub fn begin_cmd(device: &ash::Device, cmd: vk::CommandBuffer) {
@@ -326,6 +329,33 @@ pub fn copy_to_image_from_buffer(device: &ash::Device, cmd: vk::CommandBuffer, d
     }
 }
 
+pub fn copy_to_image_array_from_buffer(
+    device: &ash::Device,
+    cmd: vk::CommandBuffer,
+    dst_image: &AllocatedImage,
+    buffer: (vk::Buffer, vk_mem::Allocation),
+    layers: u32,
+    info: TextureArray,
+) {
+    unsafe {
+        let image_extent = vk::Extent3D { width: dst_image.extent.width, height: dst_image.extent.height, depth: 1 };
+
+        let image_subresource_layer = vk::ImageSubresourceLayers::default()
+            .aspect_mask(vk::ImageAspectFlags::COLOR)
+            .base_array_layer(0)
+            .layer_count(layers)
+            .mip_level(0);
+
+        let copy_region = vec![BufferImageCopy::default()
+            .buffer_offset(0)
+            .buffer_image_height(0)
+            .buffer_row_length(0)
+            .image_extent(image_extent)
+            .image_subresource(image_subresource_layer)];
+
+        device.cmd_copy_buffer_to_image(cmd, buffer.0, dst_image.image, dst_image.layout, &copy_region);
+    }
+}
 // TODO, make this more general to use, Only works for general to color attachment but easy fix
 pub fn copy_to_image_from_image(
     device: &ash::Device,
@@ -423,4 +453,53 @@ pub fn copy_to_buffer_from_buffer() {}
 
 pub fn copy_image_immediate(context: &VulkanContext, src_image: &AllocatedImage, dst_image: &AllocatedImage, extent: vk::Extent2D) {
     // TODO
+}
+
+fn load_shader(path: String) -> Vec<u8> {
+    let mut file = File::open(path.clone()).expect(&format!("unable to read file {}", path));
+    let mut buffer = vec![];
+    file.read_to_end(&mut buffer).expect("unable to read file");
+
+    return buffer;
+}
+
+pub struct TextureArray {
+    pub dimensions: (u32, u32),
+    pub grid: u32,
+    pub pixel_size: u32,
+    pub data: Vec<u8>,
+}
+
+use image::io::Reader as ImageReader;
+
+pub fn load_texture_array(texture_name: &str, chunk_grid: u32) -> TextureArray {
+    let path = format!("{}{}", TEXTURE_FOLDER, texture_name);
+
+    let image = ImageReader::open(path).unwrap().decode().unwrap().to_rgba8();
+    let dimensions = image.dimensions();
+    let pixel_size = 4;
+    let raw = image.as_raw();
+
+    let chunks_number_x = dimensions.0 / chunk_grid;
+    let chunks_number_y = dimensions.1 / chunk_grid;
+
+    let data_len = chunks_number_x * chunks_number_y * chunk_grid * chunk_grid * pixel_size;
+    let mut data: Vec<u8> = vec![0; data_len as usize];
+
+    let mut data_offset = 0;
+    for y in 0..chunks_number_y {
+        let y_offset = y * chunks_number_x * chunk_grid * chunk_grid * pixel_size;
+
+        for x in 0..chunks_number_x {
+            let x_chunk_start = x * chunk_grid * pixel_size;
+
+            for i in 0..chunk_grid {
+                let y_down = i * chunks_number_x * chunk_grid * pixel_size + y_offset + x_chunk_start;
+                let bytes_to_copy = chunk_grid * pixel_size;
+                unsafe { std::ptr::copy_nonoverlapping(&raw[y_down as usize], data.as_mut_ptr().add(data_offset), bytes_to_copy as usize) };
+                data_offset += bytes_to_copy as usize;
+            }
+        }
+    }
+    TextureArray { dimensions, grid: chunk_grid, pixel_size, data }
 }
