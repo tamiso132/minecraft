@@ -204,6 +204,23 @@ pub fn transition_image_general(device: &ash::Device, cmd: vk::CommandBuffer, im
     image.layout = vk::ImageLayout::GENERAL;
 }
 
+pub fn transition_depth(device: &ash::Device, cmd: vk::CommandBuffer, image: &mut AllocatedImage) {
+    let mut barrier = vec![init::image_barrier_info(
+        image.image,
+        vk::ImageLayout::UNDEFINED,
+        vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
+        vk::AccessFlags::NONE_KHR,
+        vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
+    )];
+
+    barrier[0].subresource_range.aspect_mask = vk::ImageAspectFlags::DEPTH;
+
+    let (src_stage, dst_stage) = (vk::PipelineStageFlags::TOP_OF_PIPE, vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS);
+
+    image.layout = vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL;
+    unsafe { device.cmd_pipeline_barrier(cmd, src_stage, dst_stage, vk::DependencyFlags::empty(), &vec![], &vec![], &barrier) }
+}
+
 pub fn transition_image_color(device: &ash::Device, cmd: vk::CommandBuffer, image: vk::Image) {
     let barrier = vec![init::image_barrier_info(
         image,

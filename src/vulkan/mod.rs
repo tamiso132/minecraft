@@ -7,7 +7,7 @@ use std::{
 
 use ash::{
     khr::dynamic_rendering,
-    vk::{self, BlendFactor, BlendOp, DescriptorType, Extent2D, Offset2D, PrimitiveTopology, QueueFlags, ShaderStageFlags},
+    vk::{self, BlendFactor, BlendOp, ClearValue, DescriptorType, Extent2D, Offset2D, PrimitiveTopology, QueueFlags, ShaderStageFlags},
 };
 use builder::{ComputePipelineBuilder, PipelineBuilder, SwapchainBuilder};
 use imgui::{draw_list, FontConfig, FontSource, TextureId};
@@ -125,15 +125,15 @@ impl ImguiContext {
         platform.attach_window(imgui.io_mut(), window, HiDpiMode::Rounded);
 
         unsafe {
-            let blend_state = vk::PipelineColorBlendAttachmentState::default()
+            let color_blend_attachments = vk::PipelineColorBlendAttachmentState::default()
                 .color_write_mask(vk::ColorComponentFlags::R | vk::ColorComponentFlags::G | vk::ColorComponentFlags::B | vk::ColorComponentFlags::A)
                 .blend_enable(true)
-                .src_alpha_blend_factor(BlendFactor::SRC1_ALPHA)
-                .dst_alpha_blend_factor(BlendFactor::ONE_MINUS_CONSTANT_ALPHA)
-                .color_blend_op(BlendOp::ADD)
-                .src_alpha_blend_factor(BlendFactor::ONE)
-                .dst_alpha_blend_factor(BlendFactor::ONE_MINUS_SRC_ALPHA)
-                .alpha_blend_op(BlendOp::ADD);
+                .src_color_blend_factor(vk::BlendFactor::SRC_ALPHA)
+                .dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
+                .color_blend_op(vk::BlendOp::ADD)
+                .src_alpha_blend_factor(vk::BlendFactor::ONE)
+                .dst_alpha_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
+                .alpha_blend_op(vk::BlendOp::ADD);
 
             let shader_frag = util::create_shader(&device, "shaders/spv/imgui_shader.frag.spv".to_owned());
             let shader_vert = util::create_shader(&device, "shaders/spv/imgui_shader.vert.spv".to_owned());
@@ -142,11 +142,8 @@ impl ImguiContext {
                 .add_color_format(swapchain_format)
                 .add_layout(layout)
                 .add_topology(PrimitiveTopology::TRIANGLE_LIST)
-                .add_blend(blend_state)
+                .add_blend(color_blend_attachments)
                 .build::<MeshImGui>(&device, shader_vert, shader_frag);
-
-            device.destroy_shader_module(shader_frag, None);
-            device.destroy_shader_module(shader_vert, None);
 
             let fonts_texture = {
                 let fonts = imgui.fonts();
@@ -605,17 +602,25 @@ impl VulkanContext {
 
     pub fn begin_rendering(&self, load: vk::AttachmentLoadOp) {
         unsafe {
+            let mut color_clear = ClearValue::default();
+            color_clear.color = vk::ClearColorValue::default();
+            color_clear.color.int32 = [1; 4];
+
             let attachment = vk::RenderingAttachmentInfo::default()
                 .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
                 .load_op(load)
                 .store_op(vk::AttachmentStoreOp::STORE)
                 .image_view(self.get_swapchain_image().view);
 
+            let mut depth_clear = ClearValue::default();
+            depth_clear.depth_stencil.depth = 1.0;
+
             let depth_attachment = vk::RenderingAttachmentInfo::default()
                 .image_layout(vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
                 .load_op(vk::AttachmentLoadOp::CLEAR)
                 .store_op(vk::AttachmentStoreOp::STORE)
-                .image_view(self.swapchain.depth.view);
+                .image_view(self.swapchain.depth.view)
+                .clear_value(depth_clear);
 
             self.device.cmd_begin_rendering(
                 self.cmds[self.current_frame],

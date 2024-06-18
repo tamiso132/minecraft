@@ -144,14 +144,10 @@ pub fn image_barrier_info(
         .new_layout(new_layout)
 }
 
+
+
 pub fn color_blend_state_info() -> PipelineColorBlendAttachmentState {
     vk::PipelineColorBlendAttachmentState::default()
         .color_write_mask(vk::ColorComponentFlags::R | vk::ColorComponentFlags::G | vk::ColorComponentFlags::B | vk::ColorComponentFlags::A)
-        .blend_enable(true)
-        .src_alpha_blend_factor(BlendFactor::SRC1_ALPHA)
-        .dst_alpha_blend_factor(BlendFactor::ONE_MINUS_CONSTANT_ALPHA)
-        .color_blend_op(BlendOp::ADD)
-        .src_alpha_blend_factor(BlendFactor::ONE)
-        .dst_alpha_blend_factor(BlendFactor::ONE_MINUS_SRC_ALPHA)
-        .alpha_blend_op(BlendOp::ADD)
+        .blend_enable(false)
 }

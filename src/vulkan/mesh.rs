@@ -1,6 +1,7 @@
 use std::mem;
 
 use ash::vk;
+use glm::{Vec2, Vec3};
 use imgui::draw_list;
 
 pub trait Vertex {
@@ -22,6 +23,12 @@ pub struct VertexBlock {
     norm: glm::Vec3,
     uv: glm::Vec2,
     face_index: u32,
+}
+
+impl VertexBlock {
+    pub fn new(pos: glm::Vec3, norm: Vec3, uv: Vec2, face_index: u32) -> Self {
+        Self { pos, norm, uv, face_index }
+    }
 }
 
 impl Default for VertexBlock {
@@ -67,265 +74,47 @@ impl VertexBlock {
     pub fn get_mesh() -> Vec<VertexBlock> {
         vec![
             // Right face
-            VertexBlock {
-                pos: glm::Vec3::new(0.5, 0.5, 0.5),
-                norm: glm::Vec3::new(1.0, 0.0, 0.0),
-                uv: glm::Vec2::new(1.0, 1.0),
-                face_index: 0,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(0.5, 0.5, -0.5),
-                norm: glm::Vec3::new(1.0, 0.0, 0.0),
-                uv: glm::Vec2::new(0.0, 1.0),
-                face_index: 0,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(0.5, -0.5, -0.5),
-                norm: glm::Vec3::new(1.0, 0.0, 0.0),
-                uv: glm::Vec2::new(0.0, 0.0),
-                face_index: 0,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(0.5, -0.5, -0.5),
-                norm: glm::Vec3::new(1.0, 0.0, 0.0),
-                uv: glm::Vec2::new(0.0, 0.0),
-                face_index: 0,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(0.5, -0.5, 0.5),
-                norm: glm::Vec3::new(1.0, 0.0, 0.0),
-                uv: glm::Vec2::new(1.0, 0.0),
-                face_index: 0,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(-0.5, -0.5, 0.5),
-                norm: glm::Vec3::new(-1.0, 0.0, 0.0),
-                uv: glm::Vec2::new(1.0, 1.0),
-                face_index: 1,
-                ..Default::default()
-            },
-            // LEFT FACE
-            VertexBlock {
-                pos: glm::Vec3::new(-0.5, 0.5, 0.5),
-                norm: glm::Vec3::new(-1.0, 0.0, 0.0),
-                uv: glm::Vec2::new(1.0, 0.0),
-                face_index: 1,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(-0.5, -0.5, -0.5),
-                norm: glm::Vec3::new(-1.0, 0.0, 0.0),
-                uv: glm::Vec2::new(0.0, 1.0),
-                face_index: 1,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(-0.5, 0.5, -0.5),
-                norm: glm::Vec3::new(-1.0, 0.0, 0.0),
-                uv: glm::Vec2::new(0.0, 0.0),
-                face_index: 1,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(-0.5, -0.5, -0.5),
-                norm: glm::Vec3::new(-1.0, 0.0, 0.0),
-                uv: glm::Vec2::new(0.0, 1.0),
-                face_index: 1,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(-0.5, 0.5, 0.5),
-                norm: glm::Vec3::new(-1.0, 0.0, 0.0),
-                uv: glm::Vec2::new(1.0, 0.0),
-                face_index: 1,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(-0.5, -0.5, 0.5),
-                norm: glm::Vec3::new(-1.0, 0.0, 0.0),
-                uv: glm::Vec2::new(1.0, 1.0),
-                face_index: 1,
-                ..Default::default()
-            },
-
-
+            VertexBlock::new(glm::Vec3::new(0.5, 0.5, 0.5), glm::Vec3::new(1.0, 0.0, 0.0), glm::Vec2::new(1.0, 1.0), 0),
+            VertexBlock::new(glm::Vec3::new(0.5, 0.5, -0.5), glm::Vec3::new(1.0, 0.0, 0.0), glm::Vec2::new(0.0, 1.0), 0),
+            VertexBlock::new(glm::Vec3::new(0.5, -0.5, -0.5), glm::Vec3::new(1.0, 0.0, 0.0), glm::Vec2::new(0.0, 0.0), 0),
+            VertexBlock::new(glm::Vec3::new(0.5, -0.5, -0.5), glm::Vec3::new(1.0, 0.0, 0.0), glm::Vec2::new(0.0, 0.0), 0),
+            VertexBlock::new(glm::Vec3::new(0.5, -0.5, 0.5), glm::Vec3::new(1.0, 0.0, 0.0), glm::Vec2::new(1.0, 0.0), 0),
+            VertexBlock::new(glm::Vec3::new(-0.5, -0.5, 0.5), glm::Vec3::new(-1.0, 0.0, 0.0), glm::Vec2::new(1.0, 1.0), 1),
+            // Left face
+            VertexBlock::new(glm::Vec3::new(-0.5, 0.5, 0.5), glm::Vec3::new(-1.0, 0.0, 0.0), glm::Vec2::new(1.0, 0.0), 1),
+            VertexBlock::new(glm::Vec3::new(-0.5, -0.5, -0.5), glm::Vec3::new(-1.0, 0.0, 0.0), glm::Vec2::new(0.0, 1.0), 1),
+            VertexBlock::new(glm::Vec3::new(-0.5, 0.5, -0.5), glm::Vec3::new(-1.0, 0.0, 0.0), glm::Vec2::new(0.0, 0.0), 1),
+            VertexBlock::new(glm::Vec3::new(-0.5, -0.5, -0.5), glm::Vec3::new(-1.0, 0.0, 0.0), glm::Vec2::new(0.0, 1.0), 1),
+            VertexBlock::new(glm::Vec3::new(-0.5, 0.5, 0.5), glm::Vec3::new(-1.0, 0.0, 0.0), glm::Vec2::new(1.0, 0.0), 1),
+            VertexBlock::new(glm::Vec3::new(-0.5, -0.5, 0.5), glm::Vec3::new(-1.0, 0.0, 0.0), glm::Vec2::new(1.0, 1.0), 1),
             // Top face
-            VertexBlock {
-                pos: glm::Vec3::new(-0.5, 0.5, -0.5),
-                norm: glm::Vec3::new(0.0, 1.0, 0.0),
-                uv: glm::Vec2::new(0.0, 1.0),
-                face_index: 2,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(0.5, 0.5, -0.5),
-                norm: glm::Vec3::new(0.0, 1.0, 0.0),
-                uv: glm::Vec2::new(1.0, 1.0),
-                face_index: 2,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(0.5, 0.5, 0.5),
-                norm: glm::Vec3::new(0.0, 1.0, 0.0),
-                uv: glm::Vec2::new(1.0, 0.0),
-                face_index: 2,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(0.5, 0.5, 0.5),
-                norm: glm::Vec3::new(0.0, 1.0, 0.0),
-                uv: glm::Vec2::new(1.0, 0.0),
-                face_index: 2,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(-0.5, 0.5, 0.5),
-                norm: glm::Vec3::new(0.0, 1.0, 0.0),
-                uv: glm::Vec2::new(0.0, 0.0),
-                face_index: 2,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(-0.5, 0.5, -0.5),
-                norm: glm::Vec3::new(0.0, 1.0, 0.0),
-                uv: glm::Vec2::new(0.0, 1.0),
-                face_index: 2,
-                ..Default::default()
-            },
+            VertexBlock::new(glm::Vec3::new(-0.5, 0.5, -0.5), glm::Vec3::new(0.0, 1.0, 0.0), glm::Vec2::new(0.0, 1.0), 2),
+            VertexBlock::new(glm::Vec3::new(0.5, 0.5, -0.5), glm::Vec3::new(0.0, 1.0, 0.0), glm::Vec2::new(1.0, 1.0), 2),
+            VertexBlock::new(glm::Vec3::new(0.5, 0.5, 0.5), glm::Vec3::new(0.0, 1.0, 0.0), glm::Vec2::new(1.0, 0.0), 2),
+            VertexBlock::new(glm::Vec3::new(0.5, 0.5, 0.5), glm::Vec3::new(0.0, 1.0, 0.0), glm::Vec2::new(1.0, 0.0), 2),
+            VertexBlock::new(glm::Vec3::new(-0.5, 0.5, 0.5), glm::Vec3::new(0.0, 1.0, 0.0), glm::Vec2::new(0.0, 0.0), 2),
+            VertexBlock::new(glm::Vec3::new(-0.5, 0.5, -0.5), glm::Vec3::new(0.0, 1.0, 0.0), glm::Vec2::new(0.0, 1.0), 2),
             // Bottom face
-            VertexBlock {
-                pos: glm::Vec3::new(-0.5, -0.5, -0.5),
-                norm: glm::Vec3::new(0.0, -1.0, 0.0),
-                uv: glm::Vec2::new(0.0, 1.0),
-                face_index: 3,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(0.5, -0.5, 0.5),
-                norm: glm::Vec3::new(0.0, -1.0, 0.0),
-                uv: glm::Vec2::new(1.0, 0.0),
-                face_index: 3,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(0.5, -0.5, -0.5),
-                norm: glm::Vec3::new(0.0, -1.0, 0.0),
-                uv: glm::Vec2::new(1.0, 1.0),
-                face_index: 3,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(0.5, -0.5, 0.5),
-                norm: glm::Vec3::new(0.0, -1.0, 0.0),
-                uv: glm::Vec2::new(1.0, 0.0),
-                face_index: 3,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(-0.5, -0.5, -0.5),
-                norm: glm::Vec3::new(0.0, -1.0, 0.0),
-                uv: glm::Vec2::new(0.0, 1.0),
-                face_index: 3,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(-0.5, -0.5, 0.5),
-                norm: glm::Vec3::new(0.0, -1.0, 0.0),
-                uv: glm::Vec2::new(0.0, 0.0),
-                face_index: 3,
-                ..Default::default()
-            },
+            VertexBlock::new(glm::Vec3::new(-0.5, -0.5, -0.5), glm::Vec3::new(0.0, -1.0, 0.0), glm::Vec2::new(0.0, 1.0), 3),
+            VertexBlock::new(glm::Vec3::new(0.5, -0.5, 0.5), glm::Vec3::new(0.0, -1.0, 0.0), glm::Vec2::new(1.0, 0.0), 3),
+            VertexBlock::new(glm::Vec3::new(0.5, -0.5, -0.5), glm::Vec3::new(0.0, -1.0, 0.0), glm::Vec2::new(1.0, 1.0), 3),
+            VertexBlock::new(glm::Vec3::new(0.5, -0.5, 0.5), glm::Vec3::new(0.0, -1.0, 0.0), glm::Vec2::new(1.0, 0.0), 3),
+            VertexBlock::new(glm::Vec3::new(-0.5, -0.5, -0.5), glm::Vec3::new(0.0, -1.0, 0.0), glm::Vec2::new(0.0, 1.0), 3),
+            VertexBlock::new(glm::Vec3::new(-0.5, -0.5, 0.5), glm::Vec3::new(0.0, -1.0, 0.0), glm::Vec2::new(0.0, 0.0), 3),
             // Front face
-            VertexBlock {
-                pos: glm::Vec3::new(-0.5, -0.5, 0.5),
-                norm: glm::Vec3::new(0.0, 0.0, 1.0),
-                uv: glm::Vec2::new(1.0, 1.0),
-                face_index: 5,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(0.5, 0.5, 0.5),
-                norm: glm::Vec3::new(0.0, 0.0, 1.0),
-                uv: glm::Vec2::new(0.0, 0.0),
-                face_index: 5,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(0.5, -0.5, 0.5),
-                norm: glm::Vec3::new(0.0, 0.0, 1.0),
-                uv: glm::Vec2::new(0.0, 1.0),
-                face_index: 5,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(0.5, 0.5, 0.5),
-                norm: glm::Vec3::new(0.0, 0.0, 1.0),
-                uv: glm::Vec2::new(0.0, 0.0),
-                face_index: 5,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(-0.5, -0.5, 0.5),
-                norm: glm::Vec3::new(0.0, 0.0, 1.0),
-                uv: glm::Vec2::new(1.0, 1.0),
-                face_index: 5,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(-0.5, 0.5, 0.5),
-                norm: glm::Vec3::new(0.0, 0.0, 1.0),
-                uv: glm::Vec2::new(1.0, 0.0),
-                face_index: 5,
-                ..Default::default()
-            },
+            VertexBlock::new(glm::Vec3::new(-0.5, -0.5, 0.5), glm::Vec3::new(0.0, 0.0, 1.0), glm::Vec2::new(1.0, 1.0), 5),
+            VertexBlock::new(glm::Vec3::new(0.5, 0.5, 0.5), glm::Vec3::new(0.0, 0.0, 1.0), glm::Vec2::new(0.0, 0.0), 5),
+            VertexBlock::new(glm::Vec3::new(0.5, -0.5, 0.5), glm::Vec3::new(0.0, 0.0, 1.0), glm::Vec2::new(0.0, 1.0), 5),
+            VertexBlock::new(glm::Vec3::new(0.5, 0.5, 0.5), glm::Vec3::new(0.0, 0.0, 1.0), glm::Vec2::new(0.0, 0.0), 5),
+            VertexBlock::new(glm::Vec3::new(-0.5, -0.5, 0.5), glm::Vec3::new(0.0, 0.0, 1.0), glm::Vec2::new(1.0, 1.0), 5),
+            VertexBlock::new(glm::Vec3::new(-0.5, 0.5, 0.5), glm::Vec3::new(0.0, 0.0, 1.0), glm::Vec2::new(1.0, 0.0), 5),
             // Back face
-            VertexBlock {
-                pos: glm::Vec3::new(-0.5, -0.5, -0.5),
-                norm: glm::Vec3::new(0.0, 0.0, -1.0),
-                uv: glm::Vec2::new(1.0, 1.0),
-                face_index: 4,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(0.5, -0.5, -0.5),
-                norm: glm::Vec3::new(0.0, 0.0, -1.0),
-                uv: glm::Vec2::new(0.0, 1.0),
-                face_index: 4,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(0.5, 0.5, -0.5),
-                norm: glm::Vec3::new(0.0, 0.0, -1.0),
-                uv: glm::Vec2::new(0.0, 0.0),
-                face_index: 4,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(0.5, 0.5, -0.5),
-                norm: glm::Vec3::new(0.0, 0.0, -1.0),
-                uv: glm::Vec2::new(0.0, 0.0),
-                face_index: 4,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(-0.5, 0.5, -0.5),
-                norm: glm::Vec3::new(0.0, 0.0, -1.0),
-                uv: glm::Vec2::new(1.0, 0.0),
-                face_index: 4,
-                ..Default::default()
-            },
-            VertexBlock {
-                pos: glm::Vec3::new(-0.5, -0.5, -0.5),
-                norm: glm::Vec3::new(0.0, 0.0, -1.0),
-                uv: glm::Vec2::new(1.0, 1.0),
-                face_index: 4,
-                ..Default::default()
-            },
+            VertexBlock::new(glm::Vec3::new(-0.5, -0.5, -0.5), glm::Vec3::new(0.0, 0.0, -1.0), glm::Vec2::new(1.0, 1.0), 4),
+            VertexBlock::new(glm::Vec3::new(0.5, -0.5, -0.5), glm::Vec3::new(0.0, 0.0, -1.0), glm::Vec2::new(0.0, 1.0), 4),
+            VertexBlock::new(glm::Vec3::new(0.5, 0.5, -0.5), glm::Vec3::new(0.0, 0.0, -1.0), glm::Vec2::new(0.0, 0.0), 4),
+            VertexBlock::new(glm::Vec3::new(0.5, 0.5, -0.5), glm::Vec3::new(0.0, 0.0, -1.0), glm::Vec2::new(0.0, 0.0), 4),
+            VertexBlock::new(glm::Vec3::new(-0.5, 0.5, -0.5), glm::Vec3::new(0.0, 0.0, -1.0), glm::Vec2::new(1.0, 0.0), 4),
+            VertexBlock::new(glm::Vec3::new(-0.5, -0.5, -0.5), glm::Vec3::new(0.0, 0.0, -1.0), glm::Vec2::new(1.0, 1.0), 4),
         ]
     }
 }

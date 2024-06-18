@@ -288,7 +288,7 @@ pub struct PipelineBuilder {
     depth_write: bool,
     compare: vk::CompareOp,
 
-    blend_state: PipelineColorBlendAttachmentState,
+    blend_state: [PipelineColorBlendAttachmentState; 1],
 }
 impl PipelineBuilder {
     pub fn new() -> Self {
@@ -302,11 +302,11 @@ impl PipelineBuilder {
             depth_test: false,
             depth_write: false,
             compare: vk::CompareOp::NEVER,
-            blend_state: init::color_blend_state_info(),
+            blend_state: [init::color_blend_state_info()],
         }
     }
     pub fn add_blend(mut self, blend_state: PipelineColorBlendAttachmentState) -> Self {
-        self.blend_state = blend_state;
+        self.blend_state = [blend_state];
         self
     }
     pub fn add_depth(mut self, depth_format: vk::Format, depth_test: bool, depth_write: bool, compare: vk::CompareOp) -> Self {
@@ -388,20 +388,10 @@ impl PipelineBuilder {
             .alpha_to_coverage_enable(false)
             .alpha_to_one_enable(false);
 
-        let color_blend_attachments = [vk::PipelineColorBlendAttachmentState::default()
-            .color_write_mask(vk::ColorComponentFlags::R | vk::ColorComponentFlags::G | vk::ColorComponentFlags::B | vk::ColorComponentFlags::A)
-            .blend_enable(true)
-            .src_color_blend_factor(vk::BlendFactor::SRC_ALPHA)
-            .dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
-            .color_blend_op(vk::BlendOp::ADD)
-            .src_alpha_blend_factor(vk::BlendFactor::ONE)
-            .dst_alpha_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
-            .alpha_blend_op(vk::BlendOp::ADD)];
-
         let color_blending_info = vk::PipelineColorBlendStateCreateInfo::default()
             .logic_op_enable(false)
             .logic_op(vk::LogicOp::COPY)
-            .attachments(&color_blend_attachments)
+            .attachments(&self.blend_state)
             .blend_constants([0.0, 0.0, 0.0, 0.0]);
 
         let depth_stencil_state_create_info = vk::PipelineDepthStencilStateCreateInfo::default()
@@ -409,7 +399,9 @@ impl PipelineBuilder {
             .depth_write_enable(self.depth_write)
             .depth_compare_op(self.compare)
             .depth_bounds_test_enable(false)
-            .stencil_test_enable(false);
+            .stencil_test_enable(false)
+            .min_depth_bounds(0.0)
+            .max_depth_bounds(1.0);
 
         let dynamic_states = [vk::DynamicState::SCISSOR, vk::DynamicState::VIEWPORT];
         let dynamic_states_info = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
@@ -439,9 +431,14 @@ impl PipelineBuilder {
         let pipeline_info = pipeline_info.push_next(&mut rendering_info);
 
         unsafe {
-            device
+            let pipeline = device
                 .create_graphics_pipelines(vk::PipelineCache::null(), std::slice::from_ref(&pipeline_info), None)
-                .unwrap()[0]
+                .unwrap()[0];
+
+            device.destroy_shader_module(vertex_module, None);
+            device.destroy_shader_module(fragment_module, None);
+
+            pipeline
         }
     }
 }
@@ -589,7 +586,7 @@ impl SwapchainBuilder {
                 .image(*image);
 
             let view = self.device.create_image_view(&create_view_info, None).unwrap();
-            
+
             swapchain_images_out.push(AllocatedImage {
                 descriptor_type: vk::DescriptorType::STORAGE_IMAGE,
                 alloc: None,

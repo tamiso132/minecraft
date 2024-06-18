@@ -359,8 +359,7 @@ impl Resource {
 
             let view_info = init::image_view_info(depth_image.0, format, vk::ImageAspectFlags::DEPTH);
             let view = self.device.create_image_view(&view_info, None).unwrap();
-
-            AllocatedImage {
+            let mut image = AllocatedImage {
                 binding: Binding::UNDEFINED,
                 index: 0,
                 alloc: Some(depth_image.1),
@@ -374,7 +373,13 @@ impl Resource {
                 usage,
                 descriptor_type: vk::DescriptorType::from_raw(0),
                 layers: 1,
-            }
+            };
+            util::begin_cmd(&self.device, self.cmd);
+            util::transition_depth(&self.device, self.cmd, &mut image);
+
+            util::end_cmd_and_submit(&self.device, self.cmd, self.graphic_queue, vec![], vec![], vk::Fence::null());
+            self.device.device_wait_idle().unwrap();
+            image
         }
     }
 
@@ -456,7 +461,7 @@ impl Resource {
 
             let view = self.device.create_image_view(&view_info, None).unwrap();
 
-            let sampler = util::create_sampler(&self.device, vk::Filter::LINEAR, vk::SamplerAddressMode::REPEAT);
+            let sampler = util::create_sampler(&self.device, vk::Filter::LINEAR, vk::SamplerAddressMode::CLAMP_TO_EDGE);
 
             let mut image = AllocatedImage {
                 alloc: Some(texture_image.1),

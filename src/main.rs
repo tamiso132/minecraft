@@ -10,7 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use ash::vk::{self, Viewport};
+use ash::vk::{self, Format, Viewport};
 use camera::{Alphabet, Camera, Controls, GPUCamera};
 use env_logger::Builder;
 use glm::Vec3;
@@ -59,14 +59,8 @@ struct Application {
 
     texture_atlas: AllocatedImage,
 }
-struct Index{
-    uint cam; // uniform buffer index
-    uint object; // storage buffer index
-    uint texture; // normal sampler2DArray index
-    uint normal; // normal sampler2DArray index
-    uint material; // material buffer index
-  };
-struct GPUIndex{
+#[repr(C, align(16))]
+struct GPUIndex {
     cam: u32,
     object: u32,
     texture: u32,
@@ -76,14 +70,15 @@ struct GPUIndex{
 
 #[repr(C, align(16))]
 struct CMainPipeline {
-    cam_index: u32,
-    object_index: u32,
+    index: u32,
 }
 
 struct FrameData {
     cam_buffer: AllocatedBuffer,
     objects: AllocatedBuffer,
     compute_image: AllocatedImage,
+    /// Uniform buffer that has all indices
+    indices_buffer: AllocatedBuffer,
 }
 
 extern crate ultraviolet as glm;
@@ -107,12 +102,6 @@ impl Application {
             "vertexBuffer".to_owned(),
         );
 
-        util::begin_cmd(&vulkan.device, vulkan.cmds[0]);
-
-        vulkan
-            .resources
-            .write_to_buffer_local(vulkan.cmds[0], &vertex_buffer, util::slice_as_u8(&mesh));
-
         let mut frame_data = vec![];
 
         let mut grid = [[0; 10]; 10];
@@ -134,11 +123,18 @@ impl Application {
 
         let texture_atlas = vulkan.resources.create_texture_array(texture_loaded);
 
+        util::begin_cmd(&vulkan.device, vulkan.cmds[0]);
+
+        vulkan
+            .resources
+            .write_to_buffer_local(vulkan.cmds[0], &vertex_buffer, util::slice_as_u8(&mesh));
+
         /*Should be outside of this initilize */
         for i in 0..MAX_FRAMES_IN_FLIGHT {
             let name = format!("{}_{}", "compute_skybox", i);
             let cam_buffer_n = format!("camera_buffer{}", i);
             let object_buffer_n = format!("object_buffer{}", i);
+            let indice_buffer_n = format!("indice_buffer{}", i);
             let compute_image = vulkan.resources.create_storage_image(
                 vulkan.window_extent,
                 4,
@@ -167,9 +163,27 @@ impl Application {
                 object_buffer_n,
             );
 
+            let mut indice = vulkan.resources.create_buffer(
+                size_of::<GPUIndex>() as u64,
+                BufferType::Uniform,
+                Memory::Local,
+                vulkan.graphic.family,
+                indice_buffer_n,
+            );
+            let gpu_index = GPUIndex {
+                cam: cam_buffer.index as u32,
+                object: object.index as u32,
+                texture: texture_atlas.index as u32,
+                normal: 0,
+                material: 0,
+            };
             vulkan.resources.write_to_buffer_host(&mut object, slice_as_u8(&objects));
 
-            frame_data.push(FrameData { cam_buffer, objects: object, compute_image })
+            vulkan
+                .resources
+                .write_to_buffer_local(vulkan.cmds[0], &indice, util::slice_as_u8(&vec![gpu_index]));
+
+            frame_data.push(FrameData { cam_buffer, objects: object, compute_image, indices_buffer: indice });
         }
 
         util::end_cmd_and_submit(&vulkan.device, vulkan.cmds[0], vulkan.graphic, vec![], vec![], vk::Fence::null());
@@ -182,7 +196,7 @@ impl Application {
             .add_layout(vulkan.pipeline_layout)
             .add_color_format(vulkan.get_swapchain_format())
             .add_depth(vulkan.get_depth_format(), true, true, vk::CompareOp::LESS_OR_EQUAL)
-            .cull_mode(vk::CullModeFlags::NONE, vk::FrontFace::COUNTER_CLOCKWISE)
+            .cull_mode(vk::CullModeFlags::NONE, vk::FrontFace::CLOCKWISE)
             .add_topology(vk::PrimitiveTopology::TRIANGLE_LIST)
             .build::<VertexBlock>(&vulkan.device, vertex, frag);
 
@@ -222,36 +236,36 @@ impl Application {
 
         let data = &mut self.frame_data[frame_index];
 
-        device.cmd_bind_descriptor_sets(
-            cmd,
-            vk::PipelineBindPoint::COMPUTE,
-            self.vulkan.pipeline_layout,
-            0,
-            &[self.vulkan.resources.set],
-            &vec![],
-        );
+        // device.cmd_bind_descriptor_sets(
+        //     cmd,
+        //     vk::PipelineBindPoint::COMPUTE,
+        //     self.vulkan.pipeline_layout,
+        //     0,
+        //     &[self.vulkan.resources.set],
+        //     &vec![],
+        // );
 
-        device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, self.compute);
+        // device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, self.compute);
 
-        self.push_constant.image_index = data.compute_image.index as u32;
+        // self.push_constant.image_index = data.compute_image.index as u32;
 
-        device.cmd_push_constants(
-            cmd,
-            self.vulkan.pipeline_layout,
-            vk::ShaderStageFlags::COMPUTE | vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::VERTEX,
-            0,
-            std::slice::from_raw_parts(&self.push_constant as *const _ as *const u8, std::mem::size_of::<SkyBoxPushConstant>()),
-        );
+        // device.cmd_push_constants(
+        //     cmd,
+        //     self.vulkan.pipeline_layout,
+        //     vk::ShaderStageFlags::COMPUTE | vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::VERTEX,
+        //     0,
+        //     std::slice::from_raw_parts(&self.push_constant as *const _ as *const u8, std::mem::size_of::<SkyBoxPushConstant>()),
+        // );
 
-        device.cmd_dispatch(cmd, self.vulkan.window_extent.width / 16, self.vulkan.window_extent.height / 16, 1);
+        // device.cmd_dispatch(cmd, self.vulkan.window_extent.width / 16, self.vulkan.window_extent.height / 16, 1);
 
-        util::copy_to_image_from_image(
-            &device,
-            cmd,
-            &data.compute_image,
-            &self.vulkan.swapchain.images[swapchain_index as usize],
-            self.vulkan.window_extent,
-        );
+        // util::copy_to_image_from_image(
+        //     &device,
+        //     cmd,
+        //     &data.compute_image,
+        //     &self.vulkan.swapchain.images[swapchain_index as usize],
+        //     self.vulkan.window_extent,
+        // );
 
         util::transition_image_color(&device, cmd, self.vulkan.swapchain.images[swapchain_index as usize].image);
 
@@ -264,7 +278,7 @@ impl Application {
             .resources
             .write_to_buffer_host(&mut data.cam_buffer, util::slice_as_u8(&gpu_cam));
 
-        self.vulkan.begin_rendering(vk::AttachmentLoadOp::LOAD);
+        self.vulkan.begin_rendering(vk::AttachmentLoadOp::CLEAR);
 
         device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
 
@@ -287,7 +301,8 @@ impl Application {
             &vec![self.vulkan.resources.set],
             &vec![],
         );
-        let push_main = CMainPipeline { cam_index: data.cam_buffer.index as u32, object_index: data.objects.index as u32 };
+        let push_main = CMainPipeline { index: data.indices_buffer.index as u32 };
+
         device.cmd_push_constants(
             cmd,
             self.vulkan.pipeline_layout,
@@ -296,30 +311,30 @@ impl Application {
             std::slice::from_raw_parts(&push_main as *const _ as *const u8, std::mem::size_of::<CMainPipeline>()),
         );
 
-        device.cmd_draw(cmd, VertexBlock::get_mesh().len() as u32, self.object_count, 0, 0);
+        device.cmd_draw(cmd, VertexBlock::get_mesh().len() as u32, 4, 0, 0);
 
         self.vulkan.end_rendering();
 
-        let imgui = self.vulkan.imgui.as_mut().unwrap();
+        // let imgui = self.vulkan.imgui.as_mut().unwrap();
 
-        let ui = imgui.get_draw_instance(&self.vulkan.window);
+        // let ui = imgui.get_draw_instance(&self.vulkan.window);
 
-        ui.input_float4("Data1", &mut self.push_constant.data1).build();
-        ui.input_float4("Data2", &mut self.push_constant.data2).build();
-        ui.input_float4("Data3", &mut self.push_constant.data3).build();
-        ui.input_float4("Data4", &mut self.push_constant.data4).build();
+        // ui.input_float4("Data1", &mut self.push_constant.data1).build();
+        // ui.input_float4("Data2", &mut self.push_constant.data2).build();
+        // ui.input_float4("Data3", &mut self.push_constant.data3).build();
+        // ui.input_float4("Data4", &mut self.push_constant.data4).build();
 
-        let set = self.vulkan.resources.set;
+        // let set = self.vulkan.resources.set;
 
-        imgui.render(
-            self.vulkan.window_extent,
-            &self.vulkan.swapchain.images[self.vulkan.swapchain.image_index as usize],
-            self.vulkan.current_frame,
-            &mut self.vulkan.resources,
-            cmd,
-            &self.vulkan.window,
-            set,
-        );
+        // imgui.render(
+        //     self.vulkan.window_extent,
+        //     &self.vulkan.swapchain.images[self.vulkan.swapchain.image_index as usize],
+        //     self.vulkan.current_frame,
+        //     &mut self.vulkan.resources,
+        //     cmd,
+        //     &self.vulkan.window,
+        //     set,
+        // );
 
         if self.vulkan.end_frame_and_submit() {
             self.resize = true;
@@ -418,6 +433,10 @@ impl Application {
         for image in &mut self.frame_data {
             self.vulkan.resources.resize_image(&mut image.compute_image, extent);
         }
+
+        // TODO, not recreate my shaders all the time
+        /*Recreate pipeline */
+
         self.resize = false;
     }
 }
