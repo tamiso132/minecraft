@@ -56,7 +56,7 @@ pub fn create_semphore(device: &ash::Device) -> vk::Semaphore {
     unsafe { device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None).unwrap() }
 }
 
-pub fn debug_object_set_name(context: &VulkanContext, raw_object_handle: u64, object_type: vk::ObjectType, name: String) {
+pub fn debug_object_set_name(debug_loader: &DebugLoaderEXT, raw_object_handle: u64, object_type: vk::ObjectType, name: String) {
     let raw_name = CString::new(name).unwrap();
 
     let mut debug_info = vk::DebugUtilsObjectNameInfoEXT::default().object_name(&raw_name);
@@ -64,7 +64,7 @@ pub fn debug_object_set_name(context: &VulkanContext, raw_object_handle: u64, ob
     debug_info.object_type = object_type;
 
     unsafe {
-        context.debug_loader_ext.set_debug_util_object_name_ext(debug_info).unwrap();
+        debug_loader.set_debug_util_object_name_ext(debug_info).unwrap();
     }
 }
 
@@ -325,7 +325,12 @@ pub fn present_submit(
     }
 }
 
-pub fn copy_to_image_from_buffer(device: &ash::Device, cmd: vk::CommandBuffer, dst_image: &AllocatedImage, buffer: (vk::Buffer, vk_mem::Allocation)) {
+pub fn copy_to_image_from_buffer(
+    device: &ash::Device,
+    cmd: vk::CommandBuffer,
+    dst_image: &AllocatedImage,
+    buffer: (vk::Buffer, &vk_mem::Allocation),
+) {
     unsafe {
         let image_extent = vk::Extent3D { width: dst_image.extent.width, height: dst_image.extent.height, depth: 1 };
 
@@ -350,7 +355,7 @@ pub fn copy_to_image_array_from_buffer(
     device: &ash::Device,
     cmd: vk::CommandBuffer,
     dst_image: &AllocatedImage,
-    buffer: (vk::Buffer, vk_mem::Allocation),
+    buffer: &mut (vk::Buffer, vk_mem::Allocation),
     layers: u32,
     info: TextureArray,
 ) {

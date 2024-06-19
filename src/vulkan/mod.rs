@@ -84,6 +84,7 @@ struct ImguiPushConstant {
 
 pub struct ImguiContext {
     pub device: Arc<ash::Device>,
+    pub allocator: Arc<vk_mem::Allocator>,
 
     pub imgui: imgui::Context,
     pub platform: WinitPlatform,
@@ -109,6 +110,7 @@ impl ImguiContext {
         layout: vk::PipelineLayout,
         swapchain_format: vk::Format,
         graphic: TKQueue,
+        allocator: Arc<vk_mem::Allocator>,
     ) -> Self {
         let mut imgui = imgui::Context::create();
         imgui.set_ini_filename(None);
@@ -149,7 +151,11 @@ impl ImguiContext {
                 let fonts = imgui.fonts();
                 let atlas_texture = fonts.build_rgba32_texture();
 
-                resource.create_texture_image(Extent2D { width: atlas_texture.width, height: atlas_texture.height }, atlas_texture.data)
+                resource.create_texture_image(
+                    Extent2D { width: atlas_texture.width, height: atlas_texture.height },
+                    atlas_texture.data,
+                    "imgui_font".to_owned(),
+                )
             };
 
             let fonts = imgui.fonts();
@@ -189,6 +195,7 @@ impl ImguiContext {
                 graphic_queue: graphic,
                 device,
                 layout,
+                allocator,
             }
         }
     }
@@ -334,6 +341,23 @@ impl ImguiContext {
 
     pub fn process_event_imgui(&mut self, window: &winit::window::Window, event: &Event<()>) {
         self.platform.handle_event(self.imgui.io_mut(), window, event);
+    }
+
+    pub fn destroy(&mut self) {
+        unsafe {
+            for i in 0..MAX_FRAMES_IN_FLIGHT {
+                self.allocator
+                    .destroy_buffer(self.vertex_buffers[i].buffer, &mut self.vertex_buffers[i].alloc);
+
+                self.allocator
+                    .destroy_buffer(self.index_buffers[i].buffer, &mut self.index_buffers[i].alloc);
+            }
+            self.allocator
+                .destroy_image(self.texture_atlas.image, &mut self.texture_atlas.alloc.as_mut().unwrap());
+            self.device.destroy_image_view(self.texture_atlas.view, None);
+            self.device.destroy_sampler(self.texture_atlas.sampler, None);
+            self.device.destroy_pipeline(self.pipeline, None);
+        }
     }
 }
 pub struct Swapchain {
@@ -486,6 +510,7 @@ impl VulkanContext {
                         pipeline_layout,
                         swapchain_images[0].format,
                         graphic,
+                        allocator.clone(),
                     ))
                 } else {
                     None
@@ -583,6 +608,7 @@ impl VulkanContext {
                 .unwrap();
             self.device.reset_fences(&[self.queue_done[self.current_frame]]).unwrap();
 
+            self.resources.set_frame(self.current_frame as u32);
             let signal_image_aquired = self.aquired_semp[self.current_frame];
 
             let aquire_result = self
@@ -637,10 +663,6 @@ impl VulkanContext {
         unsafe { self.device.cmd_end_rendering(self.cmds[self.current_frame as usize]) };
     }
 
-    pub fn process_imgui_event(&mut self, event: &Event<()>) {
-        self.imgui.as_mut().unwrap().process_event_imgui(&self.window, event);
-    }
-
     pub fn end_frame_and_submit(&mut self) -> bool {
         let cmd = self.cmds[self.current_frame];
 
@@ -678,6 +700,10 @@ impl VulkanContext {
         false
     }
 
+    pub fn process_imgui_event(&mut self, event: &Event<()>) {
+        self.imgui.as_mut().unwrap().process_event_imgui(&self.window, event);
+    }
+
     pub fn get_swapchain_format(&self) -> vk::Format {
         self.swapchain.images[0].format
     }
@@ -688,6 +714,49 @@ impl VulkanContext {
 
     pub fn get_depth_format(&self) -> vk::Format {
         self.swapchain.depth.format
+    }
+
+    pub fn destroy(&mut self) {
+        unsafe {
+            /*Destroy swapchain stuff */
+            self.allocator
+                .destroy_image(self.swapchain.depth.image, &mut self.swapchain.depth.alloc.as_mut().unwrap());
+
+            for image in &self.swapchain.images {
+                self.device.destroy_image_view(image.view, None);
+            }
+
+            self.swapchain_loader.destroy_swapchain(self.swapchain.swap, None);
+
+            self.surface_loader.destroy_surface(self.swapchain.surface, None);
+
+            self.device.destroy_pipeline_layout(self.pipeline_layout, None);
+
+            if self.imgui.is_some() {
+                self.imgui.as_mut().unwrap().destroy();
+            }
+
+            /*Destroy per frame data */
+            for index in 0..MAX_FRAMES_IN_FLIGHT {
+                self.device.destroy_semaphore(self.aquired_semp[index], None);
+                self.device.destroy_semaphore(self.render_done_signal[index], None);
+                self.device.destroy_fence(self.queue_done[index], None);
+
+                self.device.destroy_command_pool(self.pools[index], None);
+            }
+
+            if self.debug_loader.is_some() {
+                self.debug_loader
+                    .as_mut()
+                    .unwrap()
+                    .destroy_debug_utils_messenger(self.debug_messenger, None);
+            }
+
+            self.resources.destroy();
+
+            self.device.destroy_device(None);
+            self.instance.destroy_instance(None);
+        }
     }
 }
 #[derive(Debug, Clone, Copy)]

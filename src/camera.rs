@@ -1,6 +1,6 @@
 use std::{collections::HashMap, mem::transmute, ops::Mul};
 
-use ash::vk;
+use ash::vk::{self, Extent2D};
 use glm::{Mat4, Vec3};
 use winit::{
     event::WindowEvent,
@@ -101,7 +101,7 @@ impl Camera {
         let yaw = 0.0;
         let pitch = 0.0;
 
-        let mut projection: glm::Mat4 = glm::projection::perspective_vk(aspect, fovy, near, far);
+        let mut projection: glm::Mat4 = glm::projection::perspective_vk(fovy, aspect, near, far);
 
         Self {
             pos: Vec3::new(0.0, 0.0, 3.0),
@@ -116,6 +116,16 @@ impl Camera {
             far,
         }
     }
+
+    pub fn resize_window(&mut self, extent: Extent2D) {
+        let aspect = extent.width as f32 / extent.height as f32;
+        let fovy = f32::from(70.0).to_radians();
+        let near = 0.1;
+        let far = 200.0;
+
+        self.projection = glm::projection::perspective_vk(fovy, aspect, near, far);
+    }
+
     pub fn process_keyboard(&mut self, controls: &Controls, delta_time: f64) {
         let cam_speed = Vec3::new(2.5 * delta_time as f32, 2.5 * delta_time as f32, 2.5 * delta_time as f32);
         if controls.get_state(KeyCode::KeyW) {

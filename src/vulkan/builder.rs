@@ -432,7 +432,7 @@ impl PipelineBuilder {
 
         unsafe {
             let pipeline = device
-                .create_graphics_pipelines(vk::PipelineCache::null(), std::slice::from_ref(&pipeline_info), None)
+                .create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_info], None)
                 .unwrap()[0];
 
             device.destroy_shader_module(vertex_module, None);
@@ -474,14 +474,6 @@ impl SwapchainBuilder {
         window: Arc<winit::window::Window>,
         surface_loader: Option<(Arc<surface::Instance>, vk::SurfaceKHR)>,
     ) -> SwapchainBuilder {
-        let surface = ash_window::create_surface(
-            entry.as_ref(),
-            instance.as_ref(),
-            window.display_handle().unwrap().as_raw(),
-            window.window_handle().unwrap().as_raw(),
-            None,
-        )
-        .expect("surface failed");
         let s = {
             if surface_loader.is_some() {
                 surface_loader.unwrap()
@@ -511,7 +503,7 @@ impl SwapchainBuilder {
             min_image_count,
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             image_format: vk::Format::R8G8B8A8_SRGB,
-            surface,
+            surface: s.1,
             surface_loader: s.0,
             physical,
             extent: Extent2D { width: 1920, height: 1080 },
@@ -599,7 +591,7 @@ impl SwapchainBuilder {
             });
         }
 
-        let allocated_depth = res.create_depth_image(vk::Format::D16_UNORM, self.extent);
+        let allocated_depth = res.create_depth_image(vk::Format::D32_SFLOAT, self.extent);
 
         depth_image_out.set(allocated_depth);
 
@@ -656,11 +648,38 @@ impl SwapchainBuilder {
                 });
             }
 
-            let allocated_depth = res.create_depth_image(vk::Format::D16_UNORM, self.extent);
+            let allocated_depth = res.create_depth_image(vk::Format::D32_SFLOAT, self.extent);
 
             depth_image_out.set(allocated_depth);
 
             (swapchain_loader, swapchain, self.surface_loader, self.surface)
+        }
+    }
+}
+
+pub struct ComputePipelineBuilder {
+    compute_shader: vk::ShaderModule,
+}
+
+impl ComputePipelineBuilder {
+    pub fn new(compute_shader: vk::ShaderModule) -> Self {
+        Self { compute_shader }
+    }
+
+    pub fn build(&self, device: &ash::Device, pipeline_layout: vk::PipelineLayout) -> vk::Pipeline {
+        let name = CString::new("main").unwrap();
+
+        let compute_pipeline_info = vec![vk::ComputePipelineCreateInfo::default().layout(pipeline_layout).stage(
+            vk::PipelineShaderStageCreateInfo::default()
+                .stage(vk::ShaderStageFlags::COMPUTE)
+                .module(self.compute_shader)
+                .name(&name),
+        )];
+
+        unsafe {
+            device
+                .create_compute_pipelines(vk::PipelineCache::null(), &compute_pipeline_info, None)
+                .unwrap()[0]
         }
     }
 }
@@ -698,31 +717,4 @@ unsafe extern "system" fn vulkan_debug_callback(
     }
 
     vk::FALSE
-}
-
-pub struct ComputePipelineBuilder {
-    compute_shader: vk::ShaderModule,
-}
-
-impl ComputePipelineBuilder {
-    pub fn new(compute_shader: vk::ShaderModule) -> Self {
-        Self { compute_shader }
-    }
-
-    pub fn build(&self, device: &ash::Device, pipeline_layout: vk::PipelineLayout) -> vk::Pipeline {
-        let name = CString::new("main").unwrap();
-
-        let compute_pipeline_info = vec![vk::ComputePipelineCreateInfo::default().layout(pipeline_layout).stage(
-            vk::PipelineShaderStageCreateInfo::default()
-                .stage(vk::ShaderStageFlags::COMPUTE)
-                .module(self.compute_shader)
-                .name(&name),
-        )];
-
-        unsafe {
-            device
-                .create_compute_pipelines(vk::PipelineCache::null(), &compute_pipeline_info, None)
-                .unwrap()[0]
-        }
-    }
 }

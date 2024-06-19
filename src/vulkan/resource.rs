@@ -6,12 +6,15 @@ use std::{
 };
 
 use ash::vk::{
-    self, BufferUsageFlags, DebugUtilsObjectNameInfoEXT, DescriptorType, Extent2D, Extent3D, ImageLayout, ImageSubresourceRange, ImageUsageFlags,
-    MemoryPropertyFlags,
+    self, BufferUsageFlags, DebugUtilsObjectNameInfoEXT, DescriptorType, Extent2D, Extent3D, Handle, ImageLayout, ImageSubresourceRange,
+    ImageUsageFlags, MemoryPropertyFlags,
 };
 use vk_mem::Alloc;
 
-use crate::vulkan::{util, VulkanContext};
+use crate::{
+    vulkan::{util, VulkanContext},
+    MAX_FRAMES_IN_FLIGHT,
+};
 
 use super::{init, loader::DebugLoaderEXT, util::TextureArray, TKQueue};
 
@@ -132,6 +135,16 @@ pub struct AllocatedBuffer {
     pub size: u64,
 }
 
+struct TemporaryData {
+    pub staging_buffers: Vec<(vk::Buffer, vk_mem::Allocation)>,
+}
+
+impl Default for TemporaryData {
+    fn default() -> Self {
+        Self { staging_buffers: Default::default() }
+    }
+}
+
 pub struct Resource {
     device: Arc<ash::Device>,
     instance: Arc<ash::Instance>,
@@ -139,13 +152,18 @@ pub struct Resource {
 
     pub layout: vk::DescriptorSetLayout,
     pub set: vk::DescriptorSet,
+    pub descriptor_pool: vk::DescriptorPool,
 
     graphic_queue: TKQueue,
-    cmd: vk::CommandBuffer,
-    pool: vk::CommandPool,
+    pub cmd: vk::CommandBuffer,
+    pub pool: vk::CommandPool,
 
     debug_loader: DebugLoaderEXT,
     counter: [u16; Binding::variants()],
+
+    temp: Vec<TemporaryData>,
+    frame_index: u32,
+    // try to clear them every frame/ probably or keep a big staging buffer, that is always ready to use
 }
 // Genral TODO,  Seperate Descriptor create functions with creating resources not used with descriptor
 // Option 1, split things into 2 functions, one for creating and another for binding
@@ -207,6 +225,12 @@ impl Resource {
         let pool = util::create_pool(&device, graphic_queue.family);
         let cmd = util::create_cmd(&device, pool);
 
+        let mut temp = vec![];
+
+        for i in 0..MAX_FRAMES_IN_FLIGHT {
+            temp.push(TemporaryData::default());
+        }
+
         Self {
             device,
             instance,
@@ -218,6 +242,9 @@ impl Resource {
             cmd,
             pool,
             counter: [0, 0, 0, 0],
+            descriptor_pool,
+            temp,
+            frame_index: 0,
         }
     }
 
@@ -383,8 +410,8 @@ impl Resource {
         }
     }
 
-    pub fn create_texture_image(&mut self, extent: vk::Extent2D, data: &[u8]) -> AllocatedImage {
-        let (staging_buffer, staging_alloc) = self.create_staging_buffer(data);
+    pub fn create_texture_image(&mut self, extent: vk::Extent2D, data: &[u8], name: String) -> AllocatedImage {
+        let (staging_buffer, mut staging_alloc) = self.create_staging_buffer(data);
 
         let usage = ImageUsageFlags::TRANSFER_DST | ImageUsageFlags::SAMPLED;
         let memory = vk::MemoryPropertyFlags::DEVICE_LOCAL;
@@ -419,7 +446,7 @@ impl Resource {
 
             util::transition_image_transfer(&self.device, self.cmd, &mut image);
 
-            util::copy_to_image_from_buffer(&self.device, self.cmd, &image, (staging_buffer, staging_alloc));
+            util::copy_to_image_from_buffer(&self.device, self.cmd, &image, (staging_buffer, &staging_alloc));
 
             util::transition_image_shader_only(&self.device, self.cmd, &mut image);
 
@@ -434,11 +461,21 @@ impl Resource {
             // gonna remove this later when I refactor out imgui from using this
             self.bind_to_descriptor(&mut image.index, image.descriptor_type, image.binding, image_descriptor, vec![]);
 
+            let image_n = format!("{}_image", name);
+            let view_n = format!("{}_view", name);
+            let sampler_n = format!("{}_sampler", name);
+
+            util::debug_object_set_name(&self.debug_loader, image.image.as_raw(), vk::ObjectType::IMAGE, image_n);
+            util::debug_object_set_name(&self.debug_loader, image.view.as_raw(), vk::ObjectType::IMAGE_VIEW, view_n);
+            util::debug_object_set_name(&self.debug_loader, image.sampler.as_raw(), vk::ObjectType::SAMPLER, sampler_n);
+
+            self.temp[self.frame_index as usize].staging_buffers.push((staging_buffer, staging_alloc));
+
             image
         }
     }
 
-    pub fn create_texture_array(&mut self, data: TextureArray) -> AllocatedImage {
+    pub fn create_texture_array(&mut self, data: TextureArray, name: String) -> AllocatedImage {
         let grid_size = data.grid;
         let layers = (data.dimensions.0 / grid_size) * (data.dimensions.1 / grid_size);
         let extent = Extent2D { width: grid_size, height: grid_size };
@@ -482,9 +519,9 @@ impl Resource {
 
             util::transition_image_transfer(&self.device, self.cmd, &mut image);
 
-            let staging = self.create_staging_buffer(&data.data);
+            let mut staging = self.create_staging_buffer(&data.data);
 
-            util::copy_to_image_array_from_buffer(&self.device, self.cmd, &image, staging, layers, data);
+            util::copy_to_image_array_from_buffer(&self.device, self.cmd, &image, &mut staging, layers, data);
 
             util::transition_image_shader_only(&self.device, self.cmd, &mut image);
 
@@ -495,6 +532,16 @@ impl Resource {
             let image_descriptor = init::image_descriptor_info(image.layout, image.view, image.sampler);
 
             self.bind_to_descriptor(&mut image.index, image.descriptor_type, image.binding, image_descriptor, vec![]);
+
+            let image_n = format!("{}_image", name);
+            let view_n = format!("{}_view", name);
+            let sampler_n = format!("{}_sampler", name);
+
+            util::debug_object_set_name(&self.debug_loader, image.image.as_raw(), vk::ObjectType::IMAGE, image_n);
+            util::debug_object_set_name(&self.debug_loader, image.view.as_raw(), vk::ObjectType::IMAGE_VIEW, view_n);
+            util::debug_object_set_name(&self.debug_loader, image.sampler.as_raw(), vk::ObjectType::SAMPLER, sampler_n);
+
+            self.temp[self.frame_index as usize].staging_buffers.push(staging);
 
             image
         }
@@ -507,7 +554,7 @@ impl Resource {
         memory_type: MemoryPropertyFlags,
         format: vk::Format,
         image_usage: vk::ImageUsageFlags,
-        name: CString,
+        name: String,
     ) -> AllocatedImage {
         let (image_info, alloc_info) = init::image_info(extent, pixel_size, memory_type, format, image_usage);
 
@@ -532,15 +579,13 @@ impl Resource {
                 binding: Binding::StorageImage,
                 layers: 1,
             };
-            self.debug_loader
-                .set_debug_util_object_name_ext(vk::DebugUtilsObjectNameInfoEXT::default().object_handle(image.0).object_name(&name))
-                .unwrap();
-            self.debug_loader
-                .set_debug_util_object_name_ext(vk::DebugUtilsObjectNameInfoEXT::default().object_handle(image.0).object_name(&name))
-                .unwrap();
 
-            // TODO, automatically transfer it to general layout
-            // self.bind_to_descriptor(&mut alloc_image, Binding::StorageImage);
+            // let image_n = format!("{}_image", name);
+            // let view_n = format!("{}_view", name);
+
+            // util::debug_object_set_name(&self.debug_loader, alloc_image.image.as_raw(), vk::ObjectType::IMAGE, image_n);
+            // util::debug_object_set_name(&self.debug_loader, alloc_image.view.as_raw(), vk::ObjectType::IMAGE_VIEW, view_n);
+
             util::begin_cmd(&self.device, self.cmd);
             util::transition_image_general(&self.device, self.cmd, &mut alloc_image);
             util::end_cmd_and_submit(&self.device, self.cmd, self.graphic_queue, vec![], vec![], vk::Fence::null());
@@ -585,11 +630,15 @@ impl Resource {
             self.allocator.unmap_memory(&mut buffer.alloc);
         }
     }
-
+    /*Must destroy the returned object when it is not in use anymore */
     pub fn write_to_buffer_local(&mut self, cmd: vk::CommandBuffer, buffer: &AllocatedBuffer, data: &[u8]) {
         let staging = self.create_staging_buffer(data);
         let buffer_region = vk::BufferCopy::default().dst_offset(0).src_offset(0).size(data.len() as u64);
-        unsafe { self.device.cmd_copy_buffer(cmd, staging.0, buffer.buffer, &[buffer_region]) };
+        unsafe {
+            self.device.cmd_copy_buffer(cmd, staging.0, buffer.buffer, &[buffer_region]);
+        }
+
+        self.temp[self.frame_index as usize].staging_buffers.push(staging);
     }
 
     /// Only works for host visible memory
@@ -732,5 +781,35 @@ impl Resource {
             .descriptor_count(1);
 
         unsafe { self.device.update_descriptor_sets(&vec![descriptor_write], &vec![]) };
+    }
+
+    fn clear_current_frame(&mut self) {
+        for buffer in &mut self.temp[self.frame_index as usize].staging_buffers {
+            unsafe {
+                self.allocator.destroy_buffer(buffer.0, &mut buffer.1);
+            }
+        }
+        self.temp[self.frame_index as usize].staging_buffers.clear();
+    }
+
+    /// removes all temporary data associated with the frame.
+    pub fn set_frame(&mut self, frame_index: u32) {
+        self.frame_index = frame_index;
+        self.clear_current_frame();
+    }
+
+    pub fn destroy(&mut self) {
+        for i in 0..self.temp.len() {
+            unsafe {
+                for buffer in &mut self.temp[i].staging_buffers {
+                    self.allocator.destroy_buffer(buffer.0, &mut buffer.1);
+                }
+            }
+        }
+        unsafe {
+            self.device.destroy_descriptor_set_layout(self.layout, None);
+            self.device.destroy_descriptor_pool(self.descriptor_pool, None);
+            self.device.destroy_command_pool(self.pool, None);
+        }
     }
 }
