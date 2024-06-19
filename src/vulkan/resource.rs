@@ -483,7 +483,7 @@ impl Resource {
         let usage = vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED;
 
         let (image_info, alloc_info) =
-            init::image_info(Extent2D { width: grid_size, height: grid_size }, 4, memory, vk::Format::R8G8B8A8_UNORM, usage);
+            init::image_info(Extent2D { width: grid_size, height: grid_size }, 4, memory, vk::Format::R8G8B8A8_SRGB, usage);
 
         let image_info = image_info.array_layers(layers);
 

@@ -11,7 +11,7 @@ layout(location = 1) out vec2 texCoord;
 layout(location = 2) out uint outFaceIndex;
 layout(location = 3) out vec3 outFrag;
 layout(location = 4) out vec3 camPos;
-layout(location = 5) out uint texture_index;
+layout(location = 5) out uint mat_index;
 
 struct Index{
   uint cam; // uniform buffer index
@@ -58,7 +58,7 @@ void main() {
     texCoord = vTexCoord;
     outFaceIndex = vFaceIndex;
     camPos = camData.pos;
-    texture_index = object.texture_index;
+    mat_index = object.texture_index;
 
     gl_Position = camData.viewproj * object.model * vec4(vPosition, 1.0);
     outFrag = (object.model * vec4(vPosition, 1.0)).rgb;

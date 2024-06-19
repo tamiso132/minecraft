@@ -1,39 +1,98 @@
-use glm::{Mat4, Vec3};
+use glm::Vec3;
 
-#[repr(C, align(16))]
-pub struct GPUBlock {
-    model: glm::Mat4,
-    texture_index: u32,
-}
+use crate::block::{BlockType, GPUBlock, Materials};
 
-impl GPUBlock {
-    pub fn test_random_positions() -> Vec<GPUBlock> {
-        let mut blocks = vec![];
-        for i in 0..100 {
-            let mut translation = glm::Mat4::identity();
-            translation = translation * Mat4::from_translation(Vec3::new(i as f32, 0.0, 0.0));
-            blocks.push(GPUBlock { model: translation, texture_index: 0 })
-        }
-
-        blocks
-    }
-
-    pub fn from_position(position: Vec3) -> Self {
-        Self { model: Mat4::from_translation(position), texture_index: 0 }
-    }
-}
-
-#[repr(C)]
-struct GPUTexture {
-    face_indices: [u32; 6],
-    ambient: Vec3,
-    shininess: f32,
-    diffuse: Vec3,
-    specular: Vec3,
-}
-
-struct Chunk {
+const SURFACE_LEVEL: u32 = 50;
+const STONE_LEVEL: u32 = 80;
+const BASE_HEIGHT: u32 = 50;
+pub struct Chunk {
     offset: u32,
+    grid: Vec<u32>, // 16x16x256
+}
+
+impl Chunk {
+    pub fn test_generate_chunk(offset: u32) -> Vec<GPUBlock> {
+        let mut grid = [[0u32; 16]; 16];
+        let amplitude = 10.0;
+        let seed = 12004690;
+        for x in 0..16 {
+            for z in 0..16 {
+                grid[x][z] = SimplexNoise::noise_2d(x, z, 1.0, seed, amplitude, 0.2, 3).round() as u32 + BASE_HEIGHT;
+            }
+        }
+        let grid = Chunk::box_blur(grid);
+
+        let mut gpu_blocks = vec![];
+        for x in 0..16 {
+            for z in 0..16 {
+                let height = grid[x][z];
+                for y in 0..height - 1 {
+                    if y > SURFACE_LEVEL {
+                        gpu_blocks.push(GPUBlock::new(Vec3::new(x as f32, y as f32, z as f32), BlockType::Dirt));
+                    } else {
+                        gpu_blocks.push(GPUBlock::new(Vec3::new(x as f32, y as f32, z as f32), BlockType::Stone));
+                    }
+                }
+                if height > SURFACE_LEVEL {
+                    gpu_blocks.push(GPUBlock::new(Vec3::new(x as f32, height as f32, z as f32), BlockType::Grass));
+                }
+            }
+        }
+        gpu_blocks
+    }
+
+    pub fn box_blur(mut grid: [[u32; 16]; 16]) -> [[u32; 16]; 16] {
+        // TODO, I can optimize this by having two arrays
+        // and depending on the boolean, I access only zeroes or access 1 and the value for that grid. so no comparing needed.
+        for x in 0..16 {
+            for y in 0..16 {
+                let mut total_value = 0;
+                let mut divide_by = 0;
+
+                total_value += grid[x][y];
+                divide_by += 1;
+
+                if x > 0 {
+                    // left
+                    total_value += grid[x - 1][y];
+                    divide_by += 1;
+                    if y > 0 {
+                        // bottom left and bottom
+                        total_value += grid[x - 1][y - 1];
+                        total_value += grid[x][y - 1];
+                        divide_by += 2;
+
+                        if x < 15 {
+                            // bottom right
+                            total_value += grid[x + 1][y - 1];
+                            divide_by += 1;
+                        }
+                    }
+                }
+                if x < 15 {
+                    // right
+                    total_value += grid[x + 1][y];
+                    divide_by += 1;
+
+                    if y < 15 {
+                        // top and top right
+                        total_value += grid[x + 1][y + 1];
+                        total_value += grid[x][y + 1];
+                        divide_by += 2;
+
+                        if x > 0 {
+                            // Top left
+                            total_value += grid[x - 1][y + 1];
+                            divide_by += 1;
+                        }
+                    }
+                }
+
+                grid[x][y] = total_value / divide_by;
+            }
+        }
+        grid
+    }
 }
 
 pub struct SimplexNoise {}
@@ -87,8 +146,27 @@ impl SimplexNoise {
         u + v * v_multi
     }
 
-    pub fn noise_2d(x: u32, y: u32, frequency: f32, seed: u32) -> f32 {
-        Self::two_d(x as f32 + frequency + seed as f32, y as f32 + frequency + seed as f32)
+    pub fn noise_2d(x: usize, y: usize, frequency: f32, seed: u32, amplitude: f32, persistence: f32, octaves_count: u32) -> f32 {
+        let mut noise_value = 0.0;
+
+        let mut inner_amplitude = 1.0;
+        let mut total_amplitude = 0.0;
+
+        let mut inner_freq = 1.0;
+        for _ in 0..octaves_count {
+            noise_value +=
+                Self::two_d(x as f32 * frequency * inner_freq + seed as f32, y as f32 * frequency * inner_freq + seed as f32) * inner_amplitude;
+
+            total_amplitude += inner_amplitude;
+
+            inner_amplitude *= persistence;
+            inner_freq *= 2.0;
+        }
+        noise_value /= total_amplitude;
+        //  noise_value = noise_value.powf(0.31);
+        noise_value = (noise_value + 1.0) / 2.0;
+        noise_value *= amplitude;
+        noise_value
     }
 
     pub fn generate_noise(x: f32, y: f32, octaves: u32, persistence: f32) -> f32 {

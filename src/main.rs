@@ -2,15 +2,17 @@
 
 use std::{
     collections::HashMap,
+    hash::RandomState,
     mem::transmute,
     time::{Duration, Instant},
 };
 
 use ash::vk::{self};
+use block::{GPUBlock, GPUTexture, Materials};
 use camera::{Camera, Controls, GPUCamera};
 use env_logger::Builder;
 use glm::Vec3;
-use object::{GPUBlock, SimplexNoise};
+use terrain::{Chunk, SimplexNoise};
 use vulkan::{
     builder::{self, ComputePipelineBuilder},
     mesh::VertexBlock,
@@ -24,8 +26,9 @@ use winit::{
     keyboard::KeyCode,
     window::CursorGrabMode,
 };
+mod block;
 mod camera;
-mod object;
+mod terrain;
 mod vulkan;
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
@@ -52,6 +55,7 @@ struct Application {
     resize: bool,
 
     texture_atlas: AllocatedImage,
+    material_buffer: AllocatedBuffer,
 }
 
 #[repr(C, align(16))]
@@ -98,31 +102,30 @@ impl Application {
         );
 
         let mut frame_data = vec![];
-
-        let mut grid = [[0; 10]; 10];
-        let amplitude = 20.0;
-        let mut objects = vec![];
-        for x in 0..10 {
-            for z in 0..10 {
-                grid[x][z] = (((SimplexNoise::noise_2d(x as u32, z as u32, 0.1, 250) + 1.0) / 2.0) * amplitude).round() as u32;
-
-                let mut position = Vec3::new(x as f32, 0.0, z as f32);
-                for _ in 0..grid[x][z] {
-                    objects.push(GPUBlock::from_position(position));
-                    position.y += 1.0;
-                }
-            }
-        }
+        let objects = Chunk::test_generate_chunk(0);
 
         let texture_loaded = util::load_texture_array("texture_atlas_0.png", 64);
 
         let texture_atlas = vulkan.resources.create_texture_array(texture_loaded, "texture_atlas".to_owned());
+
+        let mats = Materials::get_all();
+        let material_buffer = vulkan.resources.create_buffer(
+            mats.len() as u64 * size_of::<GPUTexture>() as u64,
+            BufferType::Storage,
+            Memory::Local,
+            vulkan.graphic.family,
+            "materialbuffer".to_owned(),
+        );
 
         util::begin_cmd(&vulkan.device, vulkan.cmds[0]);
 
         vulkan
             .resources
             .write_to_buffer_local(vulkan.cmds[0], &vertex_buffer, util::slice_as_u8(&mesh));
+
+        vulkan
+            .resources
+            .write_to_buffer_local(vulkan.cmds[0], &material_buffer, &util::slice_as_u8(&mats));
 
         /*Should be outside of this initilize */
         for i in 0..MAX_FRAMES_IN_FLIGHT {
@@ -170,7 +173,7 @@ impl Application {
                 object: object.index as u32,
                 texture: texture_atlas.index as u32,
                 normal: 0,
-                material: 0,
+                material: material_buffer.index as u32,
             };
             vulkan.resources.write_to_buffer_host(&mut object, slice_as_u8(&objects));
 
@@ -200,8 +203,10 @@ impl Application {
         vulkan.window.focus_window();
 
         vulkan.resources.set_frame(0);
+
+        let cam = Camera::new(vulkan.window_extent);
         Self {
-            cam: Camera::new(vulkan.window_extent),
+            cam,
             vulkan,
             compute,
             push_constant: SkyBoxPushConstant::new(),
@@ -215,6 +220,7 @@ impl Application {
             object_count: objects.len() as u32,
             resize: false,
             texture_atlas,
+            material_buffer,
         }
     }
 

@@ -77,7 +77,7 @@ pub struct GPUCamera {
 }
 #[derive(Debug)]
 pub struct Camera {
-    pos: glm::Vec3,
+    pub pos: glm::Vec3,
     front: glm::Vec3,
     up: glm::Vec3,
 
@@ -127,7 +127,9 @@ impl Camera {
     }
 
     pub fn process_keyboard(&mut self, controls: &Controls, delta_time: f64) {
-        let cam_speed = Vec3::new(2.5 * delta_time as f32, 2.5 * delta_time as f32, 2.5 * delta_time as f32);
+        let speed_mul = 6.0;
+
+        let cam_speed = Vec3::new(speed_mul * delta_time as f32, speed_mul * delta_time as f32, speed_mul * delta_time as f32);
         if controls.get_state(KeyCode::KeyW) {
             self.pos += cam_speed * self.front;
         }

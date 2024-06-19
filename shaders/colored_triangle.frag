@@ -6,6 +6,7 @@ layout(location = 1) in vec2 inTexCoord;
 layout(location = 2) flat in uint inFaceIndex;
 layout(location = 3) in vec3 inFragPos;
 layout(location = 4) in vec3 camPos;
+layout(location = 5) flat in uint mat_index;
 
 struct Index{
   uint cam; // uniform buffer index
@@ -13,6 +14,15 @@ struct Index{
   uint texture; // normal sampler2DArray index
   uint normal; // normal sampler2DArray index
   uint material; // material buffer index
+};
+
+
+struct Material{
+  vec3 ambient;
+  float shininess;
+  vec3 diffuse;
+  vec3 specular;
+  uint face_indices[6];
 };
 
 layout(push_constant) uniform constants {
@@ -26,18 +36,22 @@ layout(set = 0, binding = 3) uniform Indices{
 
 layout(set = 0, binding = 0)  uniform sampler2DArray samplerArray[];
 
-layout(location = 0) out vec4 outFragColor;
+layout(std430, set = 0, binding = BindlessStorageBuffer) readonly buffer Materials{
+  Material mat[];
+} mats[];
 
+layout(location = 0) out vec4 outFragColor;
 
 void main() {
 
   Index index = indices[push.index].index;
 
+  Material mat = mats[index.material].mat[mat_index];
  // sampler2DArray textureArray =  samplerArray[1];
  // sampler2DArray normalTextureArray = samplerArray[index.normal];
   
 
-    vec4 color = texture(samplerArray[index.texture], vec3(inTexCoord, 3));
+    vec4 color = texture(samplerArray[index.texture], vec3(inTexCoord, mat.face_indices[inFaceIndex]));
 
    // vec3 lightColor = vec3(1.0f, 1.0f, 1.0f);
   //  vec3 lightPos = vec3(1, 1, 0);
