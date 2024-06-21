@@ -12,7 +12,7 @@ use block::{GPUBlock, GPUTexture, Materials};
 use camera::{Camera, Controls, GPUCamera};
 use env_logger::Builder;
 use glm::Vec3;
-use terrain::{Chunk, SimplexNoise};
+use terrain::{AreaGenerator, Chunk, SimplexNoise};
 use vulkan::{
     builder::{self, ComputePipelineBuilder},
     mesh::VertexBlock,
@@ -102,7 +102,7 @@ impl Application {
         );
 
         let mut frame_data = vec![];
-        let objects = Chunk::test_generate_chunk(0);
+        let objects = AreaGenerator::generate_around((0, 0));
 
         let texture_loaded = util::load_texture_array("texture_atlas_0.png", 64);
 
@@ -281,7 +281,7 @@ impl Application {
             .resources
             .write_to_buffer_host(&mut data.cam_buffer, util::slice_as_u8(&gpu_cam));
 
-        self.vulkan.begin_rendering(vk::AttachmentLoadOp::CLEAR);
+        self.vulkan.begin_rendering(vk::AttachmentLoadOp::LOAD);
 
         let mut viewport = vk::Viewport::default();
         viewport.height = self.vulkan.window_extent.height as f32;
@@ -399,7 +399,7 @@ impl Application {
                                     unsafe {
                                         self.focus = !self.focus;
                                         let cursor_grab: CursorGrabMode = transmute(self.focus);
-                                        self.vulkan.window.set_cursor_grab(cursor_grab);
+                                        self.vulkan.window.set_cursor_grab(cursor_grab).unwrap();
                                         self.vulkan.window.set_cursor_visible(!self.focus);
                                     }
                                 }

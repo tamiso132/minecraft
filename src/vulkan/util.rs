@@ -240,8 +240,8 @@ pub fn transition_image_transfer(device: &ash::Device, cmd: vk::CommandBuffer, i
         image.image,
         vk::ImageLayout::UNDEFINED,
         vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-        vk::AccessFlags::NONE_KHR,
-        vk::AccessFlags::TRANSFER_WRITE,
+        vk::AccessFlags::NONE,
+        vk::AccessFlags::TRANSFER_READ,
     )];
 
     barrier[0].subresource_range.layer_count = image.layers;
@@ -253,16 +253,23 @@ pub fn transition_image_transfer(device: &ash::Device, cmd: vk::CommandBuffer, i
     image.layout = vk::ImageLayout::TRANSFER_DST_OPTIMAL;
 }
 
-pub fn transition_image_shader_only(device: &ash::Device, cmd: vk::CommandBuffer, image: &mut AllocatedImage) {
+pub fn transition_image_shader_only(
+    device: &ash::Device,
+    cmd: vk::CommandBuffer,
+    image: &mut AllocatedImage,
+    src_layout: vk::ImageLayout,
+    src_access: vk::AccessFlags,
+) {
     let mut barrier = vec![init::image_barrier_info(
         image.image,
-        vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+        src_layout,
         vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-        vk::AccessFlags::TRANSFER_WRITE,
+        src_access,
         vk::AccessFlags::SHADER_READ,
     )];
 
     barrier[0].subresource_range.layer_count = image.layers;
+    barrier[0].subresource_range.level_count = image.miplevel;
 
     let (src_stage, dst_stage) = (vk::PipelineStageFlags::TRANSFER, vk::PipelineStageFlags::FRAGMENT_SHADER);
 
@@ -354,10 +361,9 @@ pub fn copy_to_image_from_buffer(
 pub fn copy_to_image_array_from_buffer(
     device: &ash::Device,
     cmd: vk::CommandBuffer,
-    dst_image: &AllocatedImage,
+    dst_image: &mut AllocatedImage,
     buffer: &mut (vk::Buffer, vk_mem::Allocation),
     layers: u32,
-    info: TextureArray,
 ) {
     unsafe {
         let image_extent = vk::Extent3D { width: dst_image.extent.width, height: dst_image.extent.height, depth: 1 };
@@ -376,6 +382,8 @@ pub fn copy_to_image_array_from_buffer(
             .image_subresource(image_subresource_layer)];
 
         device.cmd_copy_buffer_to_image(cmd, buffer.0, dst_image.image, dst_image.layout, &copy_region);
+
+        dst_image.layout = vk::ImageLayout::TRANSFER_DST_OPTIMAL;
     }
 }
 // TODO, make this more general to use, Only works for general to color attachment but easy fix
@@ -471,12 +479,6 @@ pub fn copy_to_image_from_image(
     }
 }
 
-pub fn copy_to_buffer_from_buffer() {}
-
-pub fn copy_image_immediate(context: &VulkanContext, src_image: &AllocatedImage, dst_image: &AllocatedImage, extent: vk::Extent2D) {
-    // TODO
-}
-
 fn load_shader(path: String) -> Vec<u8> {
     let mut file = File::open(path.clone()).expect(&format!("unable to read file {}", path));
     let mut buffer = vec![];
@@ -524,4 +526,110 @@ pub fn load_texture_array(texture_name: &str, chunk_grid: u32) -> TextureArray {
         }
     }
     TextureArray { dimensions, grid: chunk_grid, pixel_size, data }
+}
+/// Does not check if texture can be split by 2. IT JUST DO
+pub fn generate_mip_levels_array(
+    device: &ash::Device,
+    cmd: vk::CommandBuffer,
+    image: &AllocatedImage,
+    grid: u32,
+    layers: u32,
+    miplevels: u32,
+    filter: vk::Filter,
+) {
+    // transfer the dst to src
+    fn transfer_from_dst_to_src(device: &ash::Device, cmd: vk::CommandBuffer, image: vk::Image, layer: u32, miplevel: u32) {
+        let mut barrier = vec![init::image_barrier_info(
+            image,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+            vk::AccessFlags::TRANSFER_WRITE,
+            vk::AccessFlags::TRANSFER_READ,
+        )];
+
+        barrier[0].subresource_range.layer_count = 1;
+        barrier[0].subresource_range.base_array_layer = layer;
+        barrier[0].subresource_range.base_mip_level = miplevel;
+        barrier[0].subresource_range.level_count = 1;
+
+        let (src_stage, dst_stage) = (vk::PipelineStageFlags::TRANSFER, vk::PipelineStageFlags::TRANSFER);
+
+        unsafe { device.cmd_pipeline_barrier(cmd, src_stage, dst_stage, vk::DependencyFlags::empty(), &vec![], &vec![], &barrier) };
+    }
+
+    // transfer all miplevels other then 0 to dst
+    fn transfer_all_to_dst(device: &ash::Device, cmd: vk::CommandBuffer, image: vk::Image, layer_count: u32, miplevel_count: u32) {
+        let mut barrier = vec![init::image_barrier_info(
+            image,
+            vk::ImageLayout::UNDEFINED,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            vk::AccessFlags::NONE,
+            vk::AccessFlags::TRANSFER_WRITE,
+        )];
+
+        barrier[0].subresource_range.layer_count = layer_count;
+        barrier[0].subresource_range.base_array_layer = 0;
+        barrier[0].subresource_range.base_mip_level = 1;
+        barrier[0].subresource_range.level_count = miplevel_count - 1;
+
+        let (src_stage, dst_stage) = (vk::PipelineStageFlags::TOP_OF_PIPE, vk::PipelineStageFlags::TRANSFER);
+
+        unsafe { device.cmd_pipeline_barrier(cmd, src_stage, dst_stage, vk::DependencyFlags::empty(), &vec![], &vec![], &barrier) }
+    }
+
+    let offset_zero = Offset3D::default().x(0).y(0).z(0);
+
+    let base_layer = 0;
+    let mut subrange_src = vk::ImageSubresourceLayers::default()
+        .aspect_mask(vk::ImageAspectFlags::COLOR)
+        .base_array_layer(base_layer)
+        .layer_count(1);
+
+    let mut subrange_dst = vk::ImageSubresourceLayers::default()
+        .aspect_mask(vk::ImageAspectFlags::COLOR)
+        .base_array_layer(base_layer)
+        .layer_count(1);
+
+    transfer_all_to_dst(device, cmd, image.image, layers, miplevels);
+
+    for layer in 0..layers {
+        subrange_src.base_array_layer = layer;
+        subrange_dst.base_array_layer = layer;
+        let mut grid = grid;
+
+        for i in 0..miplevels - 1 {
+            let offset_src = Offset3D::default().x(grid as i32).y(grid as i32).z(1);
+            let offset_dst = Offset3D::default().x((grid / 2) as i32).y((grid / 2) as i32).z(1);
+
+            let offset_src = [offset_zero, offset_src];
+            let offset_dst = [offset_zero, offset_dst];
+
+            subrange_src.mip_level = i;
+            subrange_dst.mip_level = i + 1;
+
+            transfer_from_dst_to_src(device, cmd, image.image, layer, i);
+
+            let blit = vk::ImageBlit::default()
+                .dst_offsets(offset_dst)
+                .dst_subresource(subrange_dst)
+                .src_offsets(offset_src)
+                .src_subresource(subrange_src);
+
+            unsafe {
+                device.cmd_blit_image(
+                    cmd,
+                    image.image,
+                    vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                    image.image,
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    &[blit],
+                    filter,
+                );
+            }
+
+            grid = grid / 2;
+        }
+        transfer_from_dst_to_src(device, cmd, image.image, layer, miplevels - 1);
+    }
+    let x = 5;
 }

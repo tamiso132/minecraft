@@ -127,7 +127,11 @@ impl Camera {
     }
 
     pub fn process_keyboard(&mut self, controls: &Controls, delta_time: f64) {
-        let speed_mul = 6.0;
+        let mut speed_mul = 6.0;
+
+        if controls.get_state(KeyCode::ControlLeft) {
+            speed_mul = 20.0;
+        }
 
         let cam_speed = Vec3::new(speed_mul * delta_time as f32, speed_mul * delta_time as f32, speed_mul * delta_time as f32);
         if controls.get_state(KeyCode::KeyW) {

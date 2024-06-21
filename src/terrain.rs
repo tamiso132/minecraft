@@ -1,40 +1,80 @@
+use ash::vk::ObjectType;
 use glm::Vec3;
+use libnoise::{Generator, Source};
 
 use crate::block::{BlockType, GPUBlock, Materials};
 
 const SURFACE_LEVEL: u32 = 50;
 const STONE_LEVEL: u32 = 80;
 const BASE_HEIGHT: u32 = 50;
+
+pub enum Biome {
+    FlatLand,
+    Desert,
+    Forest,
+    Mountain,
+}
+
+pub struct AreaGenerator;
+
+impl AreaGenerator {
+    // generate chunks around player
+    pub fn generate_around(player_position: (u32, u32)) -> Vec<GPUBlock> {
+        let chunk_width = 10;
+
+        let mut object_vec: Vec<GPUBlock> = Vec::with_capacity(size_of::<GPUBlock>() * chunk_width * chunk_width * 40);
+
+        for x in 0..chunk_width {
+            for z in 0..chunk_width {
+                object_vec.append(&mut Chunk::test_generate_chunk(x, z));
+            }
+        }
+
+        object_vec
+    }
+}
+
 pub struct Chunk {
-    offset: u32,
     grid: Vec<u32>, // 16x16x256
+    biome: Biome,
 }
 
 impl Chunk {
-    pub fn test_generate_chunk(offset: u32) -> Vec<GPUBlock> {
+    pub fn test_generate_chunk(chunk_x: usize, chunk_z: usize) -> Vec<GPUBlock> {
+        let x_start = chunk_x as f32 * 16.0;
+        let z_start = chunk_z as f32 * 16.0;
         let mut grid = [[0u32; 16]; 16];
-        let amplitude = 10.0;
+        let amplitude = 15.0;
         let seed = 12004690;
+        let hill_effect = 50.0;
+        let generator = Source::simplex(seed).add(1.0).scale([0.1, 0.1]);
+
         for x in 0..16 {
             for z in 0..16 {
-                grid[x][z] = SimplexNoise::noise_2d(x, z, 1.0, seed, amplitude, 0.2, 3).round() as u32 + BASE_HEIGHT;
+                let nx = (x as f64 + x_start as f64) / 16.0;
+                let nz = (z as f64 + z_start as f64) / 16.0;
+                // grid[x][z] =
+                //     SimplexNoise::noise_2d(x + x_start as usize, z + z_start as usize, 0.31, seed, amplitude, 0.2, 5).round() as u32 + BASE_HEIGHT;
+                grid[x][z] =
+                    (((generator.sample([nx as f64, nz as f64]) * hill_effect).round() / hill_effect) * amplitude).round() as u32 + BASE_HEIGHT;
             }
         }
+
         let grid = Chunk::box_blur(grid);
 
         let mut gpu_blocks = vec![];
         for x in 0..16 {
             for z in 0..16 {
                 let height = grid[x][z];
-                for y in 0..height - 1 {
+                for y in 0..height {
                     if y > SURFACE_LEVEL {
-                        gpu_blocks.push(GPUBlock::new(Vec3::new(x as f32, y as f32, z as f32), BlockType::Dirt));
+                        gpu_blocks.push(GPUBlock::new(Vec3::new(x as f32 + x_start, y as f32, z as f32 + z_start), BlockType::Dirt));
                     } else {
-                        gpu_blocks.push(GPUBlock::new(Vec3::new(x as f32, y as f32, z as f32), BlockType::Stone));
+                        gpu_blocks.push(GPUBlock::new(Vec3::new(x as f32 + x_start, y as f32, z as f32 + z_start), BlockType::Stone));
                     }
                 }
                 if height > SURFACE_LEVEL {
-                    gpu_blocks.push(GPUBlock::new(Vec3::new(x as f32, height as f32, z as f32), BlockType::Grass));
+                    gpu_blocks.push(GPUBlock::new(Vec3::new(x as f32 + x_start, height as f32, z as f32 + z_start), BlockType::Grass));
                 }
             }
         }
@@ -153,9 +193,16 @@ impl SimplexNoise {
         let mut total_amplitude = 0.0;
 
         let mut inner_freq = 1.0;
-        for _ in 0..octaves_count {
-            noise_value +=
-                Self::two_d(x as f32 * frequency * inner_freq + seed as f32, y as f32 * frequency * inner_freq + seed as f32) * inner_amplitude;
+        let octal_offset_x = 5.4;
+        let octal_offset_y = 2.4;
+
+        let hill_steps = 5.0;
+
+        for i in 0..octaves_count {
+            noise_value += Self::two_d(
+                x as f32 * frequency * inner_freq * (octal_offset_x * i as f32) + seed as f32,
+                y as f32 * frequency * inner_freq * (octal_offset_y * i as f32) + seed as f32,
+            ) * inner_amplitude;
 
             total_amplitude += inner_amplitude;
 
@@ -165,6 +212,7 @@ impl SimplexNoise {
         noise_value /= total_amplitude;
         //  noise_value = noise_value.powf(0.31);
         noise_value = (noise_value + 1.0) / 2.0;
+        noise_value = (noise_value * hill_steps).round() / hill_steps;
         noise_value *= amplitude;
         noise_value
     }

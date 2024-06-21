@@ -78,6 +78,7 @@ pub struct AllocatedImage {
     pub usage: vk::ImageUsageFlags,
     pub descriptor_type: vk::DescriptorType,
     pub layers: u32,
+    pub miplevel: u32,
 }
 
 impl AllocatedImage {
@@ -116,6 +117,7 @@ impl Default for AllocatedImage {
             binding: Binding::UNDEFINED,
             index: 0,
             layers: 1,
+            miplevel: 1,
         }
     }
 }
@@ -400,6 +402,7 @@ impl Resource {
                 usage,
                 descriptor_type: vk::DescriptorType::from_raw(0),
                 layers: 1,
+                ..Default::default()
             };
             util::begin_cmd(&self.device, self.cmd);
             util::transition_depth(&self.device, self.cmd, &mut image);
@@ -412,7 +415,6 @@ impl Resource {
 
     pub fn create_texture_image(&mut self, extent: vk::Extent2D, data: &[u8], name: String) -> AllocatedImage {
         let (staging_buffer, mut staging_alloc) = self.create_staging_buffer(data);
-
         let usage = ImageUsageFlags::TRANSFER_DST | ImageUsageFlags::SAMPLED;
         let memory = vk::MemoryPropertyFlags::DEVICE_LOCAL;
 
@@ -440,6 +442,7 @@ impl Resource {
                 usage,
                 binding: Binding::CombinedImage,
                 layers: 1,
+                ..Default::default()
             };
 
             util::begin_cmd(&self.device, self.cmd);
@@ -448,7 +451,13 @@ impl Resource {
 
             util::copy_to_image_from_buffer(&self.device, self.cmd, &image, (staging_buffer, &staging_alloc));
 
-            util::transition_image_shader_only(&self.device, self.cmd, &mut image);
+            util::transition_image_shader_only(
+                &self.device,
+                self.cmd,
+                &mut image,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                vk::AccessFlags::TRANSFER_WRITE,
+            );
 
             util::end_cmd_and_submit(&self.device, self.cmd, self.graphic_queue, vec![], vec![], vk::Fence::null());
 
@@ -480,17 +489,23 @@ impl Resource {
         let layers = (data.dimensions.0 / grid_size) * (data.dimensions.1 / grid_size);
         let extent = Extent2D { width: grid_size, height: grid_size };
         let memory = vk::MemoryPropertyFlags::DEVICE_LOCAL;
-        let usage = vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED;
+        let usage = vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_SRC;
+
+        let filter = vk::Filter::LINEAR;
+
+        let miplevel = (data.grid as f32).log2().floor() as u32 + 1;
 
         let (image_info, alloc_info) =
             init::image_info(Extent2D { width: grid_size, height: grid_size }, 4, memory, vk::Format::R8G8B8A8_SRGB, usage);
 
-        let image_info = image_info.array_layers(layers);
+        let image_info = image_info.array_layers(layers).mip_levels(miplevel);
 
         unsafe {
             let texture_image = self.allocator.create_image(&image_info, &alloc_info).unwrap();
 
-            let image_sub_range = init::image_subresource_info(vk::ImageAspectFlags::COLOR).layer_count(layers);
+            let image_sub_range = init::image_subresource_info(vk::ImageAspectFlags::COLOR)
+                .layer_count(layers)
+                .level_count(miplevel);
 
             let view_info = init::image_view_info(texture_image.0, image_info.format, vk::ImageAspectFlags::COLOR)
                 .subresource_range(image_sub_range)
@@ -498,7 +513,18 @@ impl Resource {
 
             let view = self.device.create_image_view(&view_info, None).unwrap();
 
-            let sampler = util::create_sampler(&self.device, vk::Filter::LINEAR, vk::SamplerAddressMode::CLAMP_TO_EDGE);
+            let sampler_info = vk::SamplerCreateInfo::default()
+                .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+                .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+                .address_mode_w(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+                .mag_filter(filter)
+                .min_filter(filter)
+                .min_lod(0.0)
+                .max_lod((miplevel + 1) as f32)
+                .mip_lod_bias(0.0)
+                .mipmap_mode(vk::SamplerMipmapMode::LINEAR);
+
+            let sampler = self.device.create_sampler(&sampler_info, None).unwrap();
 
             let mut image = AllocatedImage {
                 alloc: Some(texture_image.1),
@@ -514,6 +540,7 @@ impl Resource {
                 usage,
                 binding: Binding::CombinedImage,
                 layers,
+                miplevel,
             };
             util::begin_cmd(&self.device, self.cmd);
 
@@ -521,9 +548,17 @@ impl Resource {
 
             let mut staging = self.create_staging_buffer(&data.data);
 
-            util::copy_to_image_array_from_buffer(&self.device, self.cmd, &image, &mut staging, layers, data);
+            util::copy_to_image_array_from_buffer(&self.device, self.cmd, &mut image, &mut staging, layers);
 
-            util::transition_image_shader_only(&self.device, self.cmd, &mut image);
+            util::generate_mip_levels_array(&self.device, self.cmd, &image, data.grid, layers, miplevel, vk::Filter::LINEAR);
+
+            util::transition_image_shader_only(
+                &self.device,
+                self.cmd,
+                &mut image,
+                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                vk::AccessFlags::TRANSFER_READ,
+            );
 
             util::end_cmd_and_submit(&self.device, self.cmd, self.graphic_queue, vec![], vec![], vk::Fence::null());
 
@@ -578,6 +613,7 @@ impl Resource {
                 sampler: vk::Sampler::null(),
                 binding: Binding::StorageImage,
                 layers: 1,
+                miplevel: 1,
             };
 
             // let image_n = format!("{}_image", name);
