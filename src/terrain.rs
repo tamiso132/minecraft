@@ -1,12 +1,15 @@
 use ash::vk::ObjectType;
-use glm::Vec3;
+use glm::{Mat4, Vec3};
 use libnoise::{Generator, Source};
 
-use crate::block::{BlockType, GPUBlock, Materials};
+use crate::{
+    block::{BlockType, GPUBlock, Materials},
+    vulkan::mesh::{Face, VertexBlock},
+};
 
 const SURFACE_LEVEL: u32 = 50;
 const STONE_LEVEL: u32 = 80;
-const BASE_HEIGHT: u32 = 50;
+const BASE_HEIGHT: u32 = 10;
 
 pub enum Biome {
     FlatLand,
@@ -15,12 +18,18 @@ pub enum Biome {
     Mountain,
 }
 
+pub struct WorldGeneration {}
+
+impl WorldGeneration {
+    pub fn new(seed: u32) {}
+}
+
 pub struct AreaGenerator;
 
 impl AreaGenerator {
     // generate chunks around player
     pub fn generate_around(player_position: (u32, u32)) -> Vec<GPUBlock> {
-        let chunk_width = 10;
+        let chunk_width = 1;
 
         let mut object_vec: Vec<GPUBlock> = Vec::with_capacity(size_of::<GPUBlock>() * chunk_width * chunk_width * 40);
 
@@ -33,52 +42,277 @@ impl AreaGenerator {
         object_vec
     }
 }
+/// Save the chunks into a uniform buffer with their model. Then the object will
+const CHUNK_LENGTH: usize = 16;
+const CHUNK_HEIGHT: usize = 90;
 
 pub struct Chunk {
-    grid: Vec<u32>, // 16x16x256
-    biome: Biome,
+    pub blocks: Vec<GPUBlock>,
 }
 
 impl Chunk {
+    pub fn test_occulusion() -> Vec<GPUBlock> {
+        let center_x = 1;
+        let center_y = 1;
+
+        let mut right = Self::generate_chunk_test(center_x + 1, center_y, BlockType::Dirt);
+        let mut left = Self::generate_chunk_test(center_x - 1, center_y, BlockType::Dirt);
+        let mut front = Self::generate_chunk_test(center_x, center_y + 1, BlockType::Dirt);
+        let mut back = Self::generate_chunk_test(center_x, center_y - 1, BlockType::Dirt);
+
+        let center = Self::generate_chunk_test(center_x, center_y, BlockType::Stone);
+
+        let mut culled_objects = Self::occlusion_cull(&center.blocks, &right, &left, &front, &back);
+        culled_objects.append(&mut right.blocks);
+        culled_objects.append(&mut left.blocks);
+        culled_objects.append(&mut front.blocks);
+        culled_objects.append(&mut back.blocks);
+        culled_objects
+    }
+
+    pub fn generate_chunk_test(chunk_x: usize, chunk_z: usize, block_type: BlockType) -> Chunk {
+        let x_start = chunk_x as f32 * CHUNK_LENGTH as f32;
+        let z_start = chunk_z as f32 * CHUNK_LENGTH as f32;
+
+        let mut grid = [[0u32; 16]; 16];
+        let amplitude = 10.0;
+        let seed = 12004690;
+        let hill_effect = 1.0;
+        let generator = Source::simplex(seed).add(1.0).scale([0.1, 0.1]);
+
+        for x in 0..CHUNK_LENGTH {
+            for z in 0..CHUNK_LENGTH {
+                let nx = (x as f64 + x_start as f64) / 16.0;
+                let nz = (z as f64 + z_start as f64) / 16.0;
+
+                let noise = generator.sample([nx + x_start as f64, nz + z_start as f64]);
+                let processed_noise =
+                    (((noise * hill_effect).round() / hill_effect) * amplitude).round() as u32 + (CHUNK_HEIGHT as u32 - amplitude as u32);
+
+                grid[x][z] = processed_noise;
+            }
+        }
+
+        let mut gpu_blocks = vec![];
+        for y in 0..CHUNK_HEIGHT {
+            for z in 0..CHUNK_LENGTH {
+                for x in 0..CHUNK_LENGTH {
+                    let height = grid[x][z];
+                    gpu_blocks.push(GPUBlock::new(Vec3::new(x as f32 + x_start, y as f32, z as f32 + z_start), block_type));
+                }
+            }
+        }
+
+        Self { blocks: gpu_blocks }
+    }
+
     pub fn test_generate_chunk(chunk_x: usize, chunk_z: usize) -> Vec<GPUBlock> {
         let x_start = chunk_x as f32 * 16.0;
         let z_start = chunk_z as f32 * 16.0;
         let mut grid = [[0u32; 16]; 16];
-        let amplitude = 15.0;
+        let amplitude = 10.0;
         let seed = 12004690;
-        let hill_effect = 50.0;
+        let hill_effect = 1.0;
         let generator = Source::simplex(seed).add(1.0).scale([0.1, 0.1]);
 
-        for x in 0..16 {
-            for z in 0..16 {
+        for x in 0..CHUNK_LENGTH {
+            for z in 0..CHUNK_LENGTH {
                 let nx = (x as f64 + x_start as f64) / 16.0;
                 let nz = (z as f64 + z_start as f64) / 16.0;
-                // grid[x][z] =
-                //     SimplexNoise::noise_2d(x + x_start as usize, z + z_start as usize, 0.31, seed, amplitude, 0.2, 5).round() as u32 + BASE_HEIGHT;
                 grid[x][z] =
                     (((generator.sample([nx as f64, nz as f64]) * hill_effect).round() / hill_effect) * amplitude).round() as u32 + BASE_HEIGHT;
             }
         }
 
-        let grid = Chunk::box_blur(grid);
-
         let mut gpu_blocks = vec![];
-        for x in 0..16 {
-            for z in 0..16 {
-                let height = grid[x][z];
-                for y in 0..height {
-                    if y > SURFACE_LEVEL {
-                        gpu_blocks.push(GPUBlock::new(Vec3::new(x as f32 + x_start, y as f32, z as f32 + z_start), BlockType::Dirt));
+        for y in 0..CHUNK_HEIGHT {
+            for z in 0..CHUNK_LENGTH {
+                for x in 0..CHUNK_LENGTH {
+                    let height = grid[x][z];
+                    if height < y as u32 {
+                        gpu_blocks.push(GPUBlock::new(Vec3::new(x as f32 + x_start, y as f32, z as f32 + z_start), BlockType::Air))
                     } else {
-                        gpu_blocks.push(GPUBlock::new(Vec3::new(x as f32 + x_start, y as f32, z as f32 + z_start), BlockType::Stone));
+                        if y as u32 > SURFACE_LEVEL {
+                            gpu_blocks.push(GPUBlock::new(Vec3::new(x as f32 + x_start, y as f32, z as f32 + z_start), BlockType::Sand));
+                        } else {
+                            gpu_blocks.push(GPUBlock::new(Vec3::new(x as f32 + x_start, y as f32, z as f32 + z_start), BlockType::Stone));
+                        }
+                        if height > SURFACE_LEVEL {
+                            gpu_blocks.push(GPUBlock::new(Vec3::new(x as f32 + x_start, height as f32, z as f32 + z_start), BlockType::Grass));
+                        }
                     }
-                }
-                if height > SURFACE_LEVEL {
-                    gpu_blocks.push(GPUBlock::new(Vec3::new(x as f32 + x_start, height as f32, z as f32 + z_start), BlockType::Grass));
                 }
             }
         }
         gpu_blocks
+    }
+    // object are laid in x *z * h
+    pub fn bake_mesh(objects: Vec<GPUBlock>) {
+        // let mut vertices = vec![];
+        // let mut indices = vec![];
+        // let mut index_offset = vec![];
+
+        let mut front = VertexBlock::get_face(Face::Front as u32);
+        // front[0]
+        // for y in 0..CHUNK_HEIGHT {
+        //     let y_offset = y * CHUNK_LENGTH * CHUNK_LENGTH;
+        //     for x in 0..CHUNK_LENGTH {
+        //         let x_offset = x * CHUNK_LENGTH;
+
+        //         for z in 0..CHUNK_LENGTH {
+        //             let block_index = y_offset + x_offset + z;
+
+        //             front[block_index].pos.z += 1.0;
+        //         }
+        //     }
+        // }
+
+        // for y in 0..255 {
+        //     let y_offset = 16 * 16 * y;
+        //     for z in 0..16 {
+        //         let z_offset = z * 16;
+        //         for x in 0..16 {
+        //             let object = objects[y_offset + z_offset + x];
+
+        //             if object.get_block_type() != BlockType::Air {
+        //                 for face in 0..6 {}
+        //             }
+        //         }
+        //     }
+        // }
+    }
+
+    fn corner_cases(culled_objects: &mut Vec<GPUBlock>, objects: &Vec<GPUBlock>, right: &Chunk, left: &Chunk, front: &Chunk, back: &Chunk) {
+        let x_offset = 0;
+        let z_offset = CHUNK_LENGTH * 1;
+        let mut chunk_area = CHUNK_LENGTH * CHUNK_LENGTH;
+        // do the x edge with chunk (Back and front)
+
+        // TODO, check edges
+        for y in 0..CHUNK_HEIGHT {
+            let y_offset = y * chunk_area;
+            let y_offset_down = (y + 1) * chunk_area;
+
+            let offset_top_right = y_offset + (CHUNK_LENGTH * CHUNK_LENGTH) - 1;
+            let offset_top_left = y_offset + (CHUNK_LENGTH * (CHUNK_LENGTH - 1));
+            let offset_bot_right = y_offset + (CHUNK_LENGTH) - 1;
+            let offset_bot_left = y_offset;
+
+            // Bottom Left Corner
+            {
+                let bot_left = objects[offset_bot_left];
+
+                if bot_left.block_type() != BlockType::Air {
+                    let block_behind = back.blocks[offset_top_left].block_type().as_raw();
+                    let block_left = left.blocks[offset_bot_right].block_type().as_raw();
+
+                    let block_front = objects[offset_bot_left + CHUNK_LENGTH].block_type().as_raw();
+                    let block_right = objects[offset_bot_left + 1].block_type().as_raw();
+
+                    let is_air = block_behind | block_left | block_front | block_right;
+
+                    if is_air != 0 {
+                        culled_objects.push(bot_left);
+                    }
+                }
+            }
+
+            // Bottom Right Corner
+            {
+                let bot_right = objects[offset_bot_right];
+
+                if bot_right.block_type() != BlockType::Air {
+                    let block_behind = back.blocks[offset_top_right].block_type().as_raw();
+                    let block_right = right.blocks[offset_bot_left].block_type().as_raw();
+
+                    let block_front = objects[offset_bot_right + CHUNK_LENGTH].block_type().as_raw();
+                    let block_left = objects[offset_bot_right - 1].block_type().as_raw();
+
+                    let is_air = block_behind | block_right | block_front | block_left;
+
+                    if is_air != 0 {
+                        culled_objects.push(bot_right);
+                    }
+                }
+            }
+
+            // Top Left Corner
+            {
+                let bot_left = objects[offset_top_left];
+
+                if bot_left.block_type() != BlockType::Air {
+                    let block_front = front.blocks[offset_bot_left].block_type().as_raw();
+                    let block_left = left.blocks[offset_top_right].block_type().as_raw();
+
+                    let block_behind = objects[offset_top_left - CHUNK_LENGTH].block_type().as_raw();
+                    let block_right = objects[offset_top_left + 1].block_type().as_raw();
+
+                    let is_air = block_behind | block_right | block_front | block_left;
+
+                    if is_air != 0 {
+                        culled_objects.push(bot_left);
+                    }
+                }
+            }
+
+            // Top Right Corner
+            {
+                let bot_left = objects[offset_top_right];
+
+                if bot_left.block_type() != BlockType::Air {
+                    let block_front = front.blocks[offset_bot_right].block_type().as_raw();
+                    let block_right = right.blocks[offset_top_left].block_type().as_raw();
+
+                    let block_behind = objects[offset_top_right - CHUNK_LENGTH].block_type().as_raw();
+                    let block_left = objects[offset_top_right - 1].block_type().as_raw();
+
+                    let is_air = block_behind | block_right | block_front | block_left;
+
+                    if is_air != 0 {
+                        culled_objects.push(bot_left);
+                    }
+                }
+            }
+        }
+    }
+
+    fn edges_cases(culled_objects: &mut Vec<GPUBlock>, objects: &Vec<GPUBlock>, right: &Chunk, left: &Chunk, front: &Chunk, back: &Chunk) {
+        let x_offset = 0;
+        let z_offset = CHUNK_LENGTH * 1;
+        let mut chunk_area = CHUNK_LENGTH * CHUNK_LENGTH;
+        // do the x edge with chunk (Back and front)
+
+        // TODO, check edges
+
+        // CHECK FRONT AND BACK EDGES
+        for y in 0..CHUNK_HEIGHT {
+            let y_offset = y * chunk_area;
+            for x in 1..CHUNK_LENGTH - 1 {
+                let back = back.blocks[y_offset + x].block_type().as_raw();
+                let front = objects[y_offset + CHUNK_LENGTH].block_type().as_raw();
+                let right = objects[y_offset + x + 1].block_type().as_raw();
+                let left = objects[y_offset + x - 1].block_type().as_raw();
+
+                let is_air = back & front & right & left;
+
+                if is_air != 0 {}
+            }
+        }
+    }
+
+    pub fn occlusion_cull(objects: &Vec<GPUBlock>, right: &Chunk, left: &Chunk, front: &Chunk, back: &Chunk) -> Vec<GPUBlock> {
+        let mut culled_objects = vec![];
+
+        Self::corner_cases(&mut culled_objects, &objects, right, left, front, back);
+
+        culled_objects
+    }
+
+    pub fn generate_face(&self, x: usize, y: usize, z: usize, face: usize) {
+        // let mut face_vertices = Vec::new();
+        // let mut face_indices = Vec::new();
+
+        // VertexBlock::get_face(face as u32);
     }
 
     pub fn box_blur(mut grid: [[u32; 16]; 16]) -> [[u32; 16]; 16] {

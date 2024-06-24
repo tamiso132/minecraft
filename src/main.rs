@@ -102,7 +102,8 @@ impl Application {
         );
 
         let mut frame_data = vec![];
-        let objects = AreaGenerator::generate_around((0, 0));
+        //let objects = AreaGenerator::generate_around((0, 0));
+        let objects = Chunk::test_occulusion();
 
         let texture_loaded = util::load_texture_array("texture_atlas_0.png", 64);
 
@@ -121,7 +122,7 @@ impl Application {
 
         vulkan
             .resources
-            .write_to_buffer_local(vulkan.cmds[0], &vertex_buffer, util::slice_as_u8(&mesh));
+            .write_to_buffer_local(vulkan.cmds[0], &vertex_buffer, util::slice_as_u8(mesh));
 
         vulkan
             .resources

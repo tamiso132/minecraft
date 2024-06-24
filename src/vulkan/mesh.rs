@@ -17,16 +17,26 @@ pub trait Vertex {
         .to_vec()
     }
 }
+#[repr(u32)]
+pub enum Face {
+    Right,
+    Left,
+    Top,
+    Bottom,
+    Front,
+    Back,
+}
+#[derive(Clone, Copy)]
 #[repr(C, align(16))]
 pub struct VertexBlock {
-    pos: glm::Vec3,
+    pub pos: glm::Vec3,
     norm: glm::Vec3,
     uv: glm::Vec2,
     face_index: u32,
 }
 
 impl VertexBlock {
-    pub fn new(pos: glm::Vec3, norm: Vec3, uv: Vec2, face_index: u32) -> Self {
+    pub const fn new(pos: glm::Vec3, norm: Vec3, uv: Vec2, face_index: u32) -> Self {
         Self { pos, norm, uv, face_index }
     }
 }
@@ -71,51 +81,69 @@ impl Vertex for VertexBlock {
 }
 
 impl VertexBlock {
-    pub fn get_mesh() -> Vec<VertexBlock> {
-        vec![
-            // Right face
-            VertexBlock::new(glm::Vec3::new(0.5, 0.5, 0.5), glm::Vec3::new(1.0, 0.0, 0.0), glm::Vec2::new(0.0, 0.0), 0),
-            VertexBlock::new(glm::Vec3::new(0.5, 0.5, -0.5), glm::Vec3::new(1.0, 0.0, 0.0), glm::Vec2::new(1.0, 0.0), 0),
-            VertexBlock::new(glm::Vec3::new(0.5, -0.5, -0.5), glm::Vec3::new(1.0, 0.0, 0.0), glm::Vec2::new(1.0, 1.0), 0),
-            VertexBlock::new(glm::Vec3::new(0.5, -0.5, -0.5), glm::Vec3::new(1.0, 0.0, 0.0), glm::Vec2::new(1.0, 1.0), 0),
-            VertexBlock::new(glm::Vec3::new(0.5, -0.5, 0.5), glm::Vec3::new(1.0, 0.0, 0.0), glm::Vec2::new(0.0, 1.0), 0),
-            VertexBlock::new(glm::Vec3::new(0.5, 0.5, 0.5), glm::Vec3::new(1.0, 0.0, 0.0), glm::Vec2::new(0.0, 0.0), 0),
-            // Left face
-            VertexBlock::new(glm::Vec3::new(-0.5, 0.5, 0.5), glm::Vec3::new(-1.0, 0.0, 0.0), glm::Vec2::new(1.0, 0.0), 1),
-            VertexBlock::new(glm::Vec3::new(-0.5, -0.5, -0.5), glm::Vec3::new(-1.0, 0.0, 0.0), glm::Vec2::new(0.0, 1.0), 1),
-            VertexBlock::new(glm::Vec3::new(-0.5, 0.5, -0.5), glm::Vec3::new(-1.0, 0.0, 0.0), glm::Vec2::new(0.0, 0.0), 1),
-            VertexBlock::new(glm::Vec3::new(-0.5, -0.5, -0.5), glm::Vec3::new(-1.0, 0.0, 0.0), glm::Vec2::new(0.0, 1.0), 1),
-            VertexBlock::new(glm::Vec3::new(-0.5, 0.5, 0.5), glm::Vec3::new(-1.0, 0.0, 0.0), glm::Vec2::new(1.0, 0.0), 1),
-            VertexBlock::new(glm::Vec3::new(-0.5, -0.5, 0.5), glm::Vec3::new(-1.0, 0.0, 0.0), glm::Vec2::new(1.0, 1.0), 1),
-            // Top face
-            VertexBlock::new(glm::Vec3::new(-0.5, 0.5, -0.5), glm::Vec3::new(0.0, 1.0, 0.0), glm::Vec2::new(0.0, 1.0), 2),
-            VertexBlock::new(glm::Vec3::new(0.5, 0.5, -0.5), glm::Vec3::new(0.0, 1.0, 0.0), glm::Vec2::new(1.0, 1.0), 2),
-            VertexBlock::new(glm::Vec3::new(0.5, 0.5, 0.5), glm::Vec3::new(0.0, 1.0, 0.0), glm::Vec2::new(1.0, 0.0), 2),
-            VertexBlock::new(glm::Vec3::new(0.5, 0.5, 0.5), glm::Vec3::new(0.0, 1.0, 0.0), glm::Vec2::new(1.0, 0.0), 2),
-            VertexBlock::new(glm::Vec3::new(-0.5, 0.5, 0.5), glm::Vec3::new(0.0, 1.0, 0.0), glm::Vec2::new(0.0, 0.0), 2),
-            VertexBlock::new(glm::Vec3::new(-0.5, 0.5, -0.5), glm::Vec3::new(0.0, 1.0, 0.0), glm::Vec2::new(0.0, 1.0), 2),
-            // Bottom face
-            VertexBlock::new(glm::Vec3::new(-0.5, -0.5, -0.5), glm::Vec3::new(0.0, -1.0, 0.0), glm::Vec2::new(0.0, 1.0), 3),
-            VertexBlock::new(glm::Vec3::new(0.5, -0.5, 0.5), glm::Vec3::new(0.0, -1.0, 0.0), glm::Vec2::new(1.0, 0.0), 3),
-            VertexBlock::new(glm::Vec3::new(0.5, -0.5, -0.5), glm::Vec3::new(0.0, -1.0, 0.0), glm::Vec2::new(1.0, 1.0), 3),
-            VertexBlock::new(glm::Vec3::new(0.5, -0.5, 0.5), glm::Vec3::new(0.0, -1.0, 0.0), glm::Vec2::new(1.0, 0.0), 3),
-            VertexBlock::new(glm::Vec3::new(-0.5, -0.5, -0.5), glm::Vec3::new(0.0, -1.0, 0.0), glm::Vec2::new(0.0, 1.0), 3),
-            VertexBlock::new(glm::Vec3::new(-0.5, -0.5, 0.5), glm::Vec3::new(0.0, -1.0, 0.0), glm::Vec2::new(0.0, 0.0), 3),
-            // Front face
-            VertexBlock::new(glm::Vec3::new(-0.5, -0.5, 0.5), glm::Vec3::new(0.0, 0.0, 1.0), glm::Vec2::new(1.0, 1.0), 5),
-            VertexBlock::new(glm::Vec3::new(0.5, 0.5, 0.5), glm::Vec3::new(0.0, 0.0, 1.0), glm::Vec2::new(0.0, 0.0), 5),
-            VertexBlock::new(glm::Vec3::new(0.5, -0.5, 0.5), glm::Vec3::new(0.0, 0.0, 1.0), glm::Vec2::new(0.0, 1.0), 5),
-            VertexBlock::new(glm::Vec3::new(0.5, 0.5, 0.5), glm::Vec3::new(0.0, 0.0, 1.0), glm::Vec2::new(0.0, 0.0), 5),
-            VertexBlock::new(glm::Vec3::new(-0.5, -0.5, 0.5), glm::Vec3::new(0.0, 0.0, 1.0), glm::Vec2::new(1.0, 1.0), 5),
-            VertexBlock::new(glm::Vec3::new(-0.5, 0.5, 0.5), glm::Vec3::new(0.0, 0.0, 1.0), glm::Vec2::new(1.0, 0.0), 5),
-            // Back face
-            VertexBlock::new(glm::Vec3::new(-0.5, -0.5, -0.5), glm::Vec3::new(0.0, 0.0, -1.0), glm::Vec2::new(1.0, 1.0), 4),
-            VertexBlock::new(glm::Vec3::new(0.5, -0.5, -0.5), glm::Vec3::new(0.0, 0.0, -1.0), glm::Vec2::new(0.0, 1.0), 4),
-            VertexBlock::new(glm::Vec3::new(0.5, 0.5, -0.5), glm::Vec3::new(0.0, 0.0, -1.0), glm::Vec2::new(0.0, 0.0), 4),
-            VertexBlock::new(glm::Vec3::new(0.5, 0.5, -0.5), glm::Vec3::new(0.0, 0.0, -1.0), glm::Vec2::new(0.0, 0.0), 4),
-            VertexBlock::new(glm::Vec3::new(-0.5, 0.5, -0.5), glm::Vec3::new(0.0, 0.0, -1.0), glm::Vec2::new(1.0, 0.0), 4),
-            VertexBlock::new(glm::Vec3::new(-0.5, -0.5, -0.5), glm::Vec3::new(0.0, 0.0, -1.0), glm::Vec2::new(1.0, 1.0), 4),
-        ]
+    const VERTEX_MESH_FACES: [VertexBlock; 36] = [
+        VertexBlock::new(glm::Vec3::new(0.5, 0.5, 0.5), glm::Vec3::new(1.0, 0.0, 0.0), glm::Vec2::new(0.0, 0.0), 0),
+        VertexBlock::new(glm::Vec3::new(0.5, 0.5, -0.5), glm::Vec3::new(1.0, 0.0, 0.0), glm::Vec2::new(1.0, 0.0), 0),
+        VertexBlock::new(glm::Vec3::new(0.5, -0.5, -0.5), glm::Vec3::new(1.0, 0.0, 0.0), glm::Vec2::new(1.0, 1.0), 0),
+        VertexBlock::new(glm::Vec3::new(0.5, -0.5, -0.5), glm::Vec3::new(1.0, 0.0, 0.0), glm::Vec2::new(1.0, 1.0), 0),
+        VertexBlock::new(glm::Vec3::new(0.5, -0.5, 0.5), glm::Vec3::new(1.0, 0.0, 0.0), glm::Vec2::new(0.0, 1.0), 0),
+        VertexBlock::new(glm::Vec3::new(0.5, 0.5, 0.5), glm::Vec3::new(1.0, 0.0, 0.0), glm::Vec2::new(0.0, 0.0), 0),
+        // Left face
+        VertexBlock::new(glm::Vec3::new(-0.5, 0.5, 0.5), glm::Vec3::new(-1.0, 0.0, 0.0), glm::Vec2::new(1.0, 0.0), 1),
+        VertexBlock::new(glm::Vec3::new(-0.5, -0.5, -0.5), glm::Vec3::new(-1.0, 0.0, 0.0), glm::Vec2::new(0.0, 1.0), 1),
+        VertexBlock::new(glm::Vec3::new(-0.5, 0.5, -0.5), glm::Vec3::new(-1.0, 0.0, 0.0), glm::Vec2::new(0.0, 0.0), 1),
+        VertexBlock::new(glm::Vec3::new(-0.5, -0.5, -0.5), glm::Vec3::new(-1.0, 0.0, 0.0), glm::Vec2::new(0.0, 1.0), 1),
+        VertexBlock::new(glm::Vec3::new(-0.5, 0.5, 0.5), glm::Vec3::new(-1.0, 0.0, 0.0), glm::Vec2::new(1.0, 0.0), 1),
+        VertexBlock::new(glm::Vec3::new(-0.5, -0.5, 0.5), glm::Vec3::new(-1.0, 0.0, 0.0), glm::Vec2::new(1.0, 1.0), 1),
+        // Top face
+        VertexBlock::new(glm::Vec3::new(-0.5, 0.5, -0.5), glm::Vec3::new(0.0, 1.0, 0.0), glm::Vec2::new(0.0, 1.0), 2),
+        VertexBlock::new(glm::Vec3::new(0.5, 0.5, -0.5), glm::Vec3::new(0.0, 1.0, 0.0), glm::Vec2::new(1.0, 1.0), 2),
+        VertexBlock::new(glm::Vec3::new(0.5, 0.5, 0.5), glm::Vec3::new(0.0, 1.0, 0.0), glm::Vec2::new(1.0, 0.0), 2),
+        VertexBlock::new(glm::Vec3::new(0.5, 0.5, 0.5), glm::Vec3::new(0.0, 1.0, 0.0), glm::Vec2::new(1.0, 0.0), 2),
+        VertexBlock::new(glm::Vec3::new(-0.5, 0.5, 0.5), glm::Vec3::new(0.0, 1.0, 0.0), glm::Vec2::new(0.0, 0.0), 2),
+        VertexBlock::new(glm::Vec3::new(-0.5, 0.5, -0.5), glm::Vec3::new(0.0, 1.0, 0.0), glm::Vec2::new(0.0, 1.0), 2),
+        // Bottom face
+        VertexBlock::new(glm::Vec3::new(-0.5, -0.5, -0.5), glm::Vec3::new(0.0, -1.0, 0.0), glm::Vec2::new(0.0, 1.0), 3),
+        VertexBlock::new(glm::Vec3::new(0.5, -0.5, 0.5), glm::Vec3::new(0.0, -1.0, 0.0), glm::Vec2::new(1.0, 0.0), 3),
+        VertexBlock::new(glm::Vec3::new(0.5, -0.5, -0.5), glm::Vec3::new(0.0, -1.0, 0.0), glm::Vec2::new(1.0, 1.0), 3),
+        VertexBlock::new(glm::Vec3::new(0.5, -0.5, 0.5), glm::Vec3::new(0.0, -1.0, 0.0), glm::Vec2::new(1.0, 0.0), 3),
+        VertexBlock::new(glm::Vec3::new(-0.5, -0.5, -0.5), glm::Vec3::new(0.0, -1.0, 0.0), glm::Vec2::new(0.0, 1.0), 3),
+        VertexBlock::new(glm::Vec3::new(-0.5, -0.5, 0.5), glm::Vec3::new(0.0, -1.0, 0.0), glm::Vec2::new(0.0, 0.0), 3),
+        // Front face
+        VertexBlock::new(glm::Vec3::new(-0.5, -0.5, 0.5), glm::Vec3::new(0.0, 0.0, 1.0), glm::Vec2::new(1.0, 1.0), 5),
+        VertexBlock::new(glm::Vec3::new(0.5, 0.5, 0.5), glm::Vec3::new(0.0, 0.0, 1.0), glm::Vec2::new(0.0, 0.0), 5),
+        VertexBlock::new(glm::Vec3::new(0.5, -0.5, 0.5), glm::Vec3::new(0.0, 0.0, 1.0), glm::Vec2::new(0.0, 1.0), 5),
+        VertexBlock::new(glm::Vec3::new(0.5, 0.5, 0.5), glm::Vec3::new(0.0, 0.0, 1.0), glm::Vec2::new(0.0, 0.0), 5),
+        VertexBlock::new(glm::Vec3::new(-0.5, -0.5, 0.5), glm::Vec3::new(0.0, 0.0, 1.0), glm::Vec2::new(1.0, 1.0), 5),
+        VertexBlock::new(glm::Vec3::new(-0.5, 0.5, 0.5), glm::Vec3::new(0.0, 0.0, 1.0), glm::Vec2::new(1.0, 0.0), 5),
+        // Back face
+        VertexBlock::new(glm::Vec3::new(-0.5, -0.5, -0.5), glm::Vec3::new(0.0, 0.0, -1.0), glm::Vec2::new(1.0, 1.0), 4),
+        VertexBlock::new(glm::Vec3::new(0.5, -0.5, -0.5), glm::Vec3::new(0.0, 0.0, -1.0), glm::Vec2::new(0.0, 1.0), 4),
+        VertexBlock::new(glm::Vec3::new(0.5, 0.5, -0.5), glm::Vec3::new(0.0, 0.0, -1.0), glm::Vec2::new(0.0, 0.0), 4),
+        VertexBlock::new(glm::Vec3::new(0.5, 0.5, -0.5), glm::Vec3::new(0.0, 0.0, -1.0), glm::Vec2::new(0.0, 0.0), 4),
+        VertexBlock::new(glm::Vec3::new(-0.5, 0.5, -0.5), glm::Vec3::new(0.0, 0.0, -1.0), glm::Vec2::new(1.0, 0.0), 4),
+        VertexBlock::new(glm::Vec3::new(-0.5, -0.5, -0.5), glm::Vec3::new(0.0, 0.0, -1.0), glm::Vec2::new(1.0, 1.0), 4),
+    ];
+
+    // TODO add offset
+    pub fn generate_face(face: u32, width: u32) {
+        // let offset = face as usize * 6;
+
+        // let vertices =Self::VERTEX_MESH_FACES[offset..offset+6].to_vec();
+
+        // for vertex in &mut vertices{
+        //     vertex.pos.x +=
+        // }
+    }
+
+    pub fn get_face(face: u32) -> Vec<VertexBlock> {
+        let offset = face as usize * 6;
+
+        Self::VERTEX_MESH_FACES[offset..offset + 6].to_vec()
+    }
+
+    pub fn get_mesh() -> &'static [VertexBlock; 36] {
+        &Self::VERTEX_MESH_FACES
     }
 }
 

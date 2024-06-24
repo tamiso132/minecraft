@@ -14,3 +14,12 @@ short summary, skips pipelines and no need for pipelines, which mean it is much 
 
 ## Multi-Draw Indirect
 Look into (this is for optimization)
+
+
+## Terrain generator
+
+Step 1.
+First generate base maps like (elevation, moist, temperate) etc.
+
+Step 2.
+match it with the type of biome and use different textures with it.

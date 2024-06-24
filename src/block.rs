@@ -2,43 +2,43 @@ use std::marker::PhantomData;
 
 use glm::{Mat4, Vec3, Vec4};
 
-#[repr(u32)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(C, align(4))]
 pub enum BlockType {
+    Air,
     Dirt,
     Grass,
     Stone,
     AcaciaL,
+    Sand,
 }
 impl BlockType {
     pub const fn variants() -> usize {
-        4
+        6
+    }
+    pub fn as_raw(&self) -> u32 {
+        *self as u32
     }
 }
-
 #[repr(C, align(16))]
+#[derive(Clone, Copy)]
 pub struct GPUBlock {
-    model: glm::Mat4,
-    texture_index: u32,
+    position: Vec3,
+    /// Which chunk it belongs to
+    texture_index: BlockType,
 }
 
 impl GPUBlock {
     pub fn new(position: Vec3, block_type: BlockType) -> Self {
-        Self { model: Mat4::from_translation(position), texture_index: block_type as u32 }
-    }
-
-    pub fn test_random_positions() -> Vec<GPUBlock> {
-        let mut blocks = vec![];
-        for i in 0..100 {
-            let mut translation = glm::Mat4::identity();
-            translation = translation * Mat4::from_translation(Vec3::new(i as f32, 0.0, 0.0));
-            blocks.push(GPUBlock { model: translation, texture_index: 0 })
-        }
-
-        blocks
+        Self { position, texture_index: block_type }
     }
 
     pub fn from_position(position: Vec3) -> Self {
-        Self { model: Mat4::from_translation(position), texture_index: 0 }
+        Self { position, texture_index: BlockType::Air }
+    }
+
+    pub fn block_type(&self) -> BlockType {
+        self.texture_index
     }
 }
 #[repr(C, align(16))]
@@ -90,6 +90,7 @@ impl Materials {
 
         let grass_side_index = 10 * atlas_width + 16;
         let grass_top_index = 14 * atlas_width + 16 + 1;
+        let sand_index = 11 * atlas_width + 15;
 
         let stone_index = 12;
 
@@ -110,10 +111,13 @@ impl Materials {
         acacia_block[2] = acacia_top;
         acacia_block[3] = acacia_top;
 
+        let sand_block = [sand_index; 6];
+
         gpu_textures[BlockType::Dirt as usize] = GPUTexture::from_face_indices(dirt_block);
         gpu_textures[BlockType::Grass as usize] = GPUTexture::from_face_indices(grass_block);
         gpu_textures[BlockType::Stone as usize] = GPUTexture::from_face_indices(stone_block);
         gpu_textures[BlockType::AcaciaL as usize] = GPUTexture::from_face_indices(acacia_block);
+        gpu_textures[BlockType::Sand as usize] = GPUTexture::from_face_indices(sand_block);
 
         gpu_textures.to_vec()
     }
