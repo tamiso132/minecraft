@@ -55,10 +55,10 @@ impl Chunk {
         let center_x = 1;
         let center_y = 1;
 
-        let mut right = Self::generate_chunk_test(center_x + 1, center_y, BlockType::Dirt);
-        let mut left = Self::generate_chunk_test(center_x - 1, center_y, BlockType::Dirt);
-        let mut front = Self::generate_chunk_test(center_x, center_y + 1, BlockType::Dirt);
-        let mut back = Self::generate_chunk_test(center_x, center_y - 1, BlockType::Dirt);
+        let mut right = Self::generate_chunk_test(center_x + 1, center_y, BlockType::Air);
+        let mut left = Self::generate_chunk_test(center_x - 1, center_y, BlockType::Air);
+        let mut front = Self::generate_chunk_test(center_x, center_y + 1, BlockType::Air);
+        let mut back = Self::generate_chunk_test(center_x, center_y - 1, BlockType::Air);
 
         let center = Self::generate_chunk_test(center_x, center_y, BlockType::Stone);
 
@@ -147,44 +147,8 @@ impl Chunk {
         gpu_blocks
     }
     // object are laid in x *z * h
-    pub fn bake_mesh(objects: Vec<GPUBlock>) {
-        // let mut vertices = vec![];
-        // let mut indices = vec![];
-        // let mut index_offset = vec![];
-
-        let mut front = VertexBlock::get_face(Face::Front as u32);
-        // front[0]
-        // for y in 0..CHUNK_HEIGHT {
-        //     let y_offset = y * CHUNK_LENGTH * CHUNK_LENGTH;
-        //     for x in 0..CHUNK_LENGTH {
-        //         let x_offset = x * CHUNK_LENGTH;
-
-        //         for z in 0..CHUNK_LENGTH {
-        //             let block_index = y_offset + x_offset + z;
-
-        //             front[block_index].pos.z += 1.0;
-        //         }
-        //     }
-        // }
-
-        // for y in 0..255 {
-        //     let y_offset = 16 * 16 * y;
-        //     for z in 0..16 {
-        //         let z_offset = z * 16;
-        //         for x in 0..16 {
-        //             let object = objects[y_offset + z_offset + x];
-
-        //             if object.get_block_type() != BlockType::Air {
-        //                 for face in 0..6 {}
-        //             }
-        //         }
-        //     }
-        // }
-    }
 
     fn corner_cases(culled_objects: &mut Vec<GPUBlock>, objects: &Vec<GPUBlock>, right: &Chunk, left: &Chunk, front: &Chunk, back: &Chunk) {
-        let x_offset = 0;
-        let z_offset = CHUNK_LENGTH * 1;
         let mut chunk_area = CHUNK_LENGTH * CHUNK_LENGTH;
         // do the x edge with chunk (Back and front)
 
@@ -203,15 +167,15 @@ impl Chunk {
                 let bot_left = objects[offset_bot_left];
 
                 if bot_left.block_type() != BlockType::Air {
-                    let block_behind = back.blocks[offset_top_left].block_type().as_raw();
-                    let block_left = left.blocks[offset_bot_right].block_type().as_raw();
+                    let block_behind = back.blocks[offset_top_left].block_type().bit_mask();
+                    let block_left = left.blocks[offset_bot_right].block_type().bit_mask();
 
-                    let block_front = objects[offset_bot_left + CHUNK_LENGTH].block_type().as_raw();
-                    let block_right = objects[offset_bot_left + 1].block_type().as_raw();
+                    let block_front = objects[offset_bot_left + CHUNK_LENGTH].block_type().bit_mask();
+                    let block_right = objects[offset_bot_left + 1].block_type().bit_mask();
 
-                    let is_air = block_behind | block_left | block_front | block_right;
+                    let is_air = (block_behind | block_left | block_front | block_right) & BlockType::Air.bit_mask();
 
-                    if is_air != 0 {
+                    if is_air == BlockType::Air.bit_mask() {
                         culled_objects.push(bot_left);
                     }
                 }
@@ -222,15 +186,15 @@ impl Chunk {
                 let bot_right = objects[offset_bot_right];
 
                 if bot_right.block_type() != BlockType::Air {
-                    let block_behind = back.blocks[offset_top_right].block_type().as_raw();
-                    let block_right = right.blocks[offset_bot_left].block_type().as_raw();
+                    let block_behind = back.blocks[offset_top_right].block_type().bit_mask();
+                    let block_right = right.blocks[offset_bot_left].block_type().bit_mask();
 
-                    let block_front = objects[offset_bot_right + CHUNK_LENGTH].block_type().as_raw();
-                    let block_left = objects[offset_bot_right - 1].block_type().as_raw();
+                    let block_front = objects[offset_bot_right + CHUNK_LENGTH].block_type().bit_mask();
+                    let block_left = objects[offset_bot_right - 1].block_type().bit_mask();
 
-                    let is_air = block_behind | block_right | block_front | block_left;
+                    let is_air = (block_behind | block_right | block_front | block_left) & 1;
 
-                    if is_air != 0 {
+                    if is_air == BlockType::Air.bit_mask() {
                         culled_objects.push(bot_right);
                     }
                 }
@@ -241,15 +205,15 @@ impl Chunk {
                 let bot_left = objects[offset_top_left];
 
                 if bot_left.block_type() != BlockType::Air {
-                    let block_front = front.blocks[offset_bot_left].block_type().as_raw();
-                    let block_left = left.blocks[offset_top_right].block_type().as_raw();
+                    let block_front = front.blocks[offset_bot_left].block_type().bit_mask();
+                    let block_left = left.blocks[offset_top_right].block_type().bit_mask();
 
-                    let block_behind = objects[offset_top_left - CHUNK_LENGTH].block_type().as_raw();
-                    let block_right = objects[offset_top_left + 1].block_type().as_raw();
+                    let block_behind = objects[offset_top_left - CHUNK_LENGTH].block_type().bit_mask();
+                    let block_right = objects[offset_top_left + 1].block_type().bit_mask();
 
-                    let is_air = block_behind | block_right | block_front | block_left;
+                    let is_air = (block_behind | block_right | block_front | block_left) & 1;
 
-                    if is_air != 0 {
+                    if is_air == BlockType::Air.bit_mask() {
                         culled_objects.push(bot_left);
                     }
                 }
@@ -260,15 +224,15 @@ impl Chunk {
                 let bot_left = objects[offset_top_right];
 
                 if bot_left.block_type() != BlockType::Air {
-                    let block_front = front.blocks[offset_bot_right].block_type().as_raw();
-                    let block_right = right.blocks[offset_top_left].block_type().as_raw();
+                    let block_front = front.blocks[offset_bot_right].block_type().bit_mask();
+                    let block_right = right.blocks[offset_top_left].block_type().bit_mask();
 
-                    let block_behind = objects[offset_top_right - CHUNK_LENGTH].block_type().as_raw();
-                    let block_left = objects[offset_top_right - 1].block_type().as_raw();
+                    let block_behind = objects[offset_top_right - CHUNK_LENGTH].block_type().bit_mask();
+                    let block_left = objects[offset_top_right - 1].block_type().bit_mask();
 
-                    let is_air = block_behind | block_right | block_front | block_left;
+                    let is_air = (block_behind | block_right | block_front | block_left) & BlockType::Air.bit_mask();
 
-                    if is_air != 0 {
+                    if is_air == BlockType::Air.bit_mask() {
                         culled_objects.push(bot_left);
                     }
                 }
@@ -288,14 +252,56 @@ impl Chunk {
         for y in 0..CHUNK_HEIGHT {
             let y_offset = y * chunk_area;
             for x in 1..CHUNK_LENGTH - 1 {
-                let back = back.blocks[y_offset + x].block_type().as_raw();
-                let front = objects[y_offset + CHUNK_LENGTH].block_type().as_raw();
-                let right = objects[y_offset + x + 1].block_type().as_raw();
-                let left = objects[y_offset + x - 1].block_type().as_raw();
+                // Bottom Edge
 
-                let is_air = back & front & right & left;
+                let lower_object = objects[y_offset + x];
 
-                if is_air != 0 {}
+                if lower_object.block_type() != BlockType::Air {
+                    let back = back.blocks[y_offset + x].block_type().bit_mask();
+                    let front = objects[y_offset + CHUNK_LENGTH].block_type().bit_mask();
+                    let right = objects[y_offset + x + 1].block_type().bit_mask();
+                    let left = objects[y_offset + x - 1].block_type().bit_mask();
+
+                    let is_air = (back | front | right | left) & BlockType::Air.bit_mask();
+
+                    if is_air == BlockType::Air.bit_mask() {
+                        culled_objects.push(lower_object);
+                    }
+                }
+                let top_offset = y_offset + x + CHUNK_LENGTH * (CHUNK_LENGTH - 1);
+
+                let front_object = objects[top_offset];
+
+                if front_object.block_type() != BlockType::Air {
+                    let front = front.blocks[y_offset + x].block_type().bit_mask();
+                    let right = objects[top_offset + 1].block_type().bit_mask();
+                    let left = objects[top_offset - 1].block_type().bit_mask();
+                    let back = objects[top_offset - 1 - CHUNK_LENGTH].block_type().bit_mask();
+
+                    let is_air = (front | right | left | back) & BlockType::Air.bit_mask();
+
+                    if is_air == BlockType::Air.bit_mask() {
+                        culled_objects.push(front_object);
+                    }
+                }
+
+                let left_offset = y_offset + (x * CHUNK_LENGTH);
+                let left_object = objects[left_offset];
+
+                let right_offset = y_offset + (CHUNK_LENGTH * x) - 1;
+
+                if left_object.block_type() != BlockType::Air {
+                    let front = objects[left_offset + CHUNK_LENGTH].block_type().bit_mask();
+                    let back = objects[left_offset - CHUNK_LENGTH].block_type().bit_mask();
+                    let right = objects[left_offset + 1].block_type().bit_mask();
+                    let left = left.blocks[right_offset].block_type().bit_mask();
+
+                    let air = (front | back | right | left) & BlockType::Air.bit_mask();
+
+                    if air == BlockType::Air.bit_mask() {
+                        culled_objects.push(left_object);
+                    }
+                }
             }
         }
     }
@@ -303,7 +309,8 @@ impl Chunk {
     pub fn occlusion_cull(objects: &Vec<GPUBlock>, right: &Chunk, left: &Chunk, front: &Chunk, back: &Chunk) -> Vec<GPUBlock> {
         let mut culled_objects = vec![];
 
-        Self::corner_cases(&mut culled_objects, &objects, right, left, front, back);
+        Self::corner_cases(&mut culled_objects, objects, right, left, front, back);
+        Self::edges_cases(&mut culled_objects, objects, right, left, front, back);
 
         culled_objects
     }

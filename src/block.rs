@@ -19,6 +19,12 @@ impl BlockType {
     pub fn as_raw(&self) -> u32 {
         *self as u32
     }
+
+    pub fn bit_mask(&self) -> u64 {
+        let value = self.as_raw();
+
+        1 << value
+    }
 }
 #[repr(C, align(16))]
 #[derive(Clone, Copy)]

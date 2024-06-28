@@ -28,6 +28,7 @@ use winit::{
 };
 mod block;
 mod camera;
+mod physics;
 mod terrain;
 mod vulkan;
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
