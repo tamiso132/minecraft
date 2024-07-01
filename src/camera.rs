@@ -7,47 +7,6 @@ use winit::{
     keyboard::{KeyCode, SmolStr},
 };
 
-#[repr(u8)]
-pub enum Alphabet {
-    A,
-    B,
-    C,
-    D,
-    E,
-    F,
-    G,
-    H,
-    I,
-    J,
-    K,
-    L,
-    M,
-    N,
-    O,
-    P,
-    Q,
-    R,
-    S,
-    T,
-    U,
-    V,
-    W,
-    X,
-    Y,
-    Z,
-}
-
-impl From<SmolStr> for Alphabet {
-    /// Will only work for characters
-    fn from(value: SmolStr) -> Self {
-        unsafe {
-            let char = value.as_str().chars().next().unwrap() as u8;
-            let letter: Alphabet = transmute(char - 97);
-            letter
-        }
-    }
-}
-
 pub struct Controls {
     letters: [bool; 193],
 }
@@ -70,6 +29,42 @@ impl Controls {
         self.letters = [false; 193];
     }
 }
+
+struct Plane {
+    normal: Vec3,
+    distance: f32,
+}
+
+impl Plane {
+    pub fn new(p1: Vec3, norm: Vec3) -> Self {
+        let normal = norm.normalized();
+        let distance = p1.dot(norm);
+
+        Self { normal, distance }
+    }
+}
+
+struct Frustum {
+    right: Plane,
+    left: Plane,
+    top: Plane,
+    bot: Plane,
+    far: Plane,
+    near: Plane,
+}
+
+impl Frustum {
+    pub fn new(cam: Camera) {
+        let aspect = cam.extent.width as f32 / cam.extent.height as f32;
+
+        let v_side = cam.far * (cam.fovy * 0.5).tan();
+        let h_side = v_side * aspect;
+        let far_mult = cam.far * cam.front;
+
+        let near_plane = Plane::new(cam.front, cam.pos + cam.near * cam.front);
+    }
+}
+
 #[repr(C, align(16))]
 pub struct GPUCamera {
     viewproj: Mat4,
@@ -81,15 +76,15 @@ pub struct Camera {
     front: glm::Vec3,
     up: glm::Vec3,
 
-    extent: vk::Extent2D,
+    pub extent: vk::Extent2D,
     projection: glm::Mat4,
 
     yaw: f32,
     pitch: f32,
 
-    fovy: f32,
-    near: f32,
-    far: f32,
+    pub fovy: f32,
+    pub near: f32,
+    pub far: f32,
 }
 
 impl Camera {
@@ -104,7 +99,7 @@ impl Camera {
         let mut projection: glm::Mat4 = glm::projection::perspective_vk(fovy, aspect, near, far);
 
         Self {
-            pos: Vec3::new(0.0, 0.0, 3.0),
+            pos: Vec3::new(250.0, 0.0, 250.0),
             front: Vec3::new(0.0, 0.0, -1.0),
             up: Vec3::new(0.0, 1.0, 0.0),
             extent,
