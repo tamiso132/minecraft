@@ -9,7 +9,7 @@ use std::{
 
 use ash::vk::{self};
 use block::{GPUBlock, GPUTexture, Materials};
-use camera::{Camera, Controls, GPUCamera};
+use camera::{Camera, Controls, Frustum, GPUCamera};
 use env_logger::Builder;
 use glm::Vec3;
 use terrain::{Chunk, SimplexNoise, World};
@@ -53,12 +53,16 @@ struct Application {
     focus: bool,
 
     object_count: u32,
+    objects: Vec<GPUBlock>,
     resize: bool,
 
     texture_atlas: AllocatedImage,
     material_buffer: AllocatedBuffer,
 
     world: World,
+    is_frustum: bool,
+
+    culled: Vec<GPUBlock>,
 }
 
 #[repr(C, align(16))]
@@ -228,6 +232,9 @@ impl Application {
             texture_atlas,
             material_buffer,
             world,
+            objects,
+            is_frustum: false,
+            culled: vec![],
         }
     }
 
@@ -284,6 +291,18 @@ impl Application {
         /*Update Camera */
         let gpu_cam = vec![self.cam.get_gpu_camera()];
 
+        if self.is_frustum {
+            let frustum = Frustum::new(&self.cam);
+            self.culled.clear();
+            for i in 0..self.objects.len() {
+                let object = self.objects[i].clone();
+                if frustum.is_block(object) {
+                    self.culled.push(object)
+                }
+            }
+            self.vulkan.resources.write_to_buffer_host(&mut data.objects, slice_as_u8(&self.culled));
+        }
+
         self.vulkan
             .resources
             .write_to_buffer_host(&mut data.cam_buffer, util::slice_as_u8(&gpu_cam));
@@ -323,7 +342,7 @@ impl Application {
             std::slice::from_raw_parts(&push_main as *const _ as *const u8, std::mem::size_of::<CMainPipeline>()),
         );
 
-        device.cmd_draw(cmd, VertexBlock::get_mesh().len() as u32, self.object_count, 0, 0);
+        device.cmd_draw(cmd, VertexBlock::get_mesh().len() as u32, self.culled.len() as u32, 0, 0);
 
         self.vulkan.end_rendering();
 
@@ -335,6 +354,7 @@ impl Application {
         ui.input_float4("Data2", &mut self.push_constant.data2).build();
         ui.input_float4("Data3", &mut self.push_constant.data3).build();
         ui.input_float4("Data4", &mut self.push_constant.data4).build();
+        ui.checkbox("Frustum", &mut self.is_frustum);
 
         let set = self.vulkan.resources.set;
 
@@ -396,7 +416,9 @@ impl Application {
                     },
                     Event::DeviceEvent { device_id, ref event } => match event {
                         event::DeviceEvent::MouseMotion { delta } => {
-                            self.cam.process_mouse(*delta);
+                            if self.focus {
+                                self.cam.process_mouse(*delta);
+                            }
                         }
                         event::DeviceEvent::Key(x) => match x.physical_key {
                             winit::keyboard::PhysicalKey::Code(keycode) => {

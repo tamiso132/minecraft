@@ -1,4 +1,8 @@
-use std::{collections::HashMap, mem::transmute, ops::Mul};
+use std::{
+    collections::HashMap,
+    mem::transmute,
+    ops::{Add, Mul, Sub},
+};
 
 use ash::vk::{self, Extent2D};
 use glm::{Mat4, Vec3};
@@ -6,6 +10,8 @@ use winit::{
     event::WindowEvent,
     keyboard::{KeyCode, SmolStr},
 };
+
+use crate::block::GPUBlock;
 
 pub struct Controls {
     letters: [bool; 193],
@@ -37,14 +43,16 @@ struct Plane {
 
 impl Plane {
     pub fn new(p1: Vec3, norm: Vec3) -> Self {
-        let normal = norm.normalized();
-        let distance = p1.dot(norm);
+        let distance = norm.dot(p1);
+        Self { normal:norm, distance }
+    }
 
-        Self { normal, distance }
+    pub fn get_signed_distance(&self, point: glm::Vec3) -> f32 {
+        self.normal.dot(point) - self.distance
     }
 }
 
-struct Frustum {
+pub struct Frustum {
     right: Plane,
     left: Plane,
     top: Plane,
@@ -54,14 +62,99 @@ struct Frustum {
 }
 
 impl Frustum {
-    pub fn new(cam: Camera) {
-        let aspect = cam.extent.width as f32 / cam.extent.height as f32;
+    pub fn new(cam: &Camera) -> Frustum {
+        let cam_right = cam.front.cross(cam.up).normalized();
 
-        let v_side = cam.far * (cam.fovy * 0.5).tan();
-        let h_side = v_side * aspect;
-        let far_mult = cam.far * cam.front;
+        let aspect = cam.aspect;
 
-        let near_plane = Plane::new(cam.front, cam.pos + cam.near * cam.front);
+        let h_far_h = cam.far * (cam.fovy * 0.5).tan();
+        let w_far_h = h_far_h * aspect;
+
+        let h_near_h = cam.near * (cam.fovy * 0.5).tan();
+        let w_near_h = h_near_h * aspect;
+
+        // NEAR points
+        let near_center = cam.pos + cam.near * cam.front;
+
+        // FAR points
+
+        let far_center = cam.pos + cam.far * cam.front;
+
+        // PLANES
+
+        let right_point = near_center + cam_right * w_near_h;
+        let right_dir = cam.up.cross((right_point - cam.pos).normalized());
+
+        let left_point = near_center - cam_right * w_near_h;
+        let left_dir = (left_point - cam.pos).normalized().cross(cam.up);
+
+        let top_point = near_center + cam.up * h_near_h;
+        let top_dir = (top_point - cam.pos).normalized().cross(cam_right);
+
+        let bot_point = top_point - cam.up * h_near_h * 2.0;
+        let bot_dir = cam_right.cross((bot_point - cam.pos).normalized());
+
+        let near = Plane::new(near_center, cam.front);
+        let far = Plane::new(far_center, -cam.front);
+        let right = Plane::new(right_point, right_dir);
+        let left = Plane::new(left_point, left_dir);
+        let top = Plane::new(top_point, top_dir);
+        let bot = Plane::new(bot_point, bot_dir);
+
+        Self { right, left, top, bot, far, near }
+    }
+
+    fn in_plane(plane: &Plane, pos: Vec3) -> bool {
+        let mut p = Vec3::new(pos.x - 0.5, pos.y - 0.5, pos.z - 0.5);
+
+        let mut n = Vec3::new(pos.x + 0.5, pos.y + 0.5, pos.z + 0.5);
+
+        if plane.normal.x >= 0.0 {
+            p.x += 1.0;
+            n.x -= 1.0;
+        }
+
+        if plane.normal.y >= 0.0 {
+            p.z += 1.0;
+            n.z -= 1.0;
+        }
+        if plane.normal.z >= 0.0 {
+            p.z += 1.0;
+            n.z -= 1.0;
+        }
+
+        if plane.get_signed_distance(p) < 0.0 {
+            return false;
+        }
+        if plane.get_signed_distance(n) < 0.0 {
+            return false;
+        }
+        return true;
+    }
+
+    pub fn is_block(&self, block: GPUBlock) -> bool {
+        // if !Self::in_plane(&self.right, block.position) {
+        //     return false;
+        // }
+
+        if !Self::in_plane(&self.left, block.position) {
+            return false;
+        }
+
+        // if !Self::in_plane(&self.top, block.position) {
+        //     return false;
+        // }
+
+        // if !Self::in_plane(&self.bot, block.position) {
+        //     return false;
+        // }
+        // if !Self::in_plane(&self.far, block.position) {
+        //     return false;
+        // }
+        if !Self::in_plane(&self.near, block.position) {
+            return false;
+        }
+        return true;
     }
 }
 
@@ -85,6 +178,7 @@ pub struct Camera {
     pub fovy: f32,
     pub near: f32,
     pub far: f32,
+    pub aspect: f32,
 }
 
 impl Camera {
@@ -96,11 +190,11 @@ impl Camera {
         let yaw = 0.0;
         let pitch = 0.0;
 
-        let mut projection: glm::Mat4 = glm::projection::perspective_vk(fovy, aspect, near, far);
+        let projection: glm::Mat4 = glm::projection::perspective_vk(fovy, aspect, near, far);
 
         Self {
-            pos: Vec3::new(250.0, 0.0, 250.0),
-            front: Vec3::new(0.0, 0.0, -1.0),
+            pos: Vec3::new(0.0, 0.0, 0.0),
+            front: Vec3::new(0.0, 0.0, 1.0),
             up: Vec3::new(0.0, 1.0, 0.0),
             extent,
             projection,
@@ -109,16 +203,14 @@ impl Camera {
             fovy,
             near,
             far,
+            aspect,
         }
     }
 
     pub fn resize_window(&mut self, extent: Extent2D) {
-        let aspect = extent.width as f32 / extent.height as f32;
-        let fovy = f32::from(70.0).to_radians();
-        let near = 0.1;
-        let far = 200.0;
-
-        self.projection = glm::projection::perspective_vk(fovy, aspect, near, far);
+        self.aspect = extent.width as f32 / extent.height as f32;
+        self.extent = extent;
+        self.projection = glm::projection::perspective_vk(self.fovy, self.aspect, self.near, self.far);
     }
 
     pub fn process_keyboard(&mut self, controls: &Controls, delta_time: f64) {

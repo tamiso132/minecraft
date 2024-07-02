@@ -18,12 +18,6 @@ pub enum Biome {
     Mountain,
 }
 
-struct RectangleBound {
-    pos: (usize, usize, usize),
-    size: (usize, usize),
-}
-
-impl RectangleBound {}
 
 pub struct World {
     player_pos: Vec3,

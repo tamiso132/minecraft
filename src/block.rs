@@ -29,7 +29,8 @@ impl BlockType {
 #[repr(C, align(16))]
 #[derive(Clone, Copy)]
 pub struct GPUBlock {
-    position: Vec3,
+    // Center of object
+    pub position: Vec3,
     /// Which chunk it belongs to
     texture_index: BlockType,
 }
