@@ -514,9 +514,9 @@ impl Resource {
             let view = self.device.create_image_view(&view_info, None).unwrap();
 
             let sampler_info = vk::SamplerCreateInfo::default()
-                .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
-                .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
-                .address_mode_w(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+                .address_mode_u(vk::SamplerAddressMode::REPEAT)
+                .address_mode_v(vk::SamplerAddressMode::REPEAT)
+                .address_mode_w(vk::SamplerAddressMode::REPEAT)
                 .mag_filter(filter)
                 .min_filter(filter)
                 .min_lod(0.0)

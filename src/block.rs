@@ -32,16 +32,18 @@ pub struct GPUBlock {
     // Center of object
     pub position: Vec3,
     /// Which chunk it belongs to
-    texture_index: BlockType,
+    pub texture_index: BlockType,
+
+    pub scale: Vec3,
 }
 
 impl GPUBlock {
     pub fn new(position: Vec3, block_type: BlockType) -> Self {
-        Self { position, texture_index: block_type }
+        Self { position, texture_index: block_type, scale: Vec3::one() }
     }
 
     pub fn from_position(position: Vec3) -> Self {
-        Self { position, texture_index: BlockType::Air }
+        Self { position, texture_index: BlockType::Air, scale: Vec3::one() }
     }
 
     pub fn block_type(&self) -> BlockType {

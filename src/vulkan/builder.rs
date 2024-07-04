@@ -10,7 +10,7 @@ use ash::{
     khr::{surface, swapchain},
     vk::{
         self, ApplicationInfo, ColorSpaceKHR, CullModeFlags, DescriptorType, Extent2D, ImageLayout, MemoryPropertyFlags,
-        PipelineColorBlendAttachmentState, PrimitiveTopology, Queue, QueueFlags, RenderPass,
+        PipelineColorBlendAttachmentState, PolygonMode, PrimitiveTopology, Queue, QueueFlags, RenderPass,
     },
     Entry,
 };
@@ -98,6 +98,11 @@ impl<'a> DeviceBuilder<'a> {
         }
 
         self
+    }
+
+    pub fn fill_mode_non_solid(mut self) -> Self {
+        self.features.fill_mode_non_solid = 1;
+        return self;
     }
 
     #[rustfmt::skip]
@@ -280,6 +285,7 @@ pub struct PipelineBuilder {
     cull_mode: CullModeFlags,
     front_face: vk::FrontFace,
     layout: vk::PipelineLayout,
+    poly_mode: vk::PolygonMode,
 
     color_format: vk::Format,
 
@@ -287,6 +293,8 @@ pub struct PipelineBuilder {
     depth_test: bool,
     depth_write: bool,
     compare: vk::CompareOp,
+
+    wire: bool,
 
     blend_state: [PipelineColorBlendAttachmentState; 1],
 }
@@ -303,6 +311,8 @@ impl PipelineBuilder {
             depth_write: false,
             compare: vk::CompareOp::NEVER,
             blend_state: [init::color_blend_state_info()],
+            poly_mode: PolygonMode::FILL,
+            wire: false,
         }
     }
     pub fn add_blend(mut self, blend_state: PipelineColorBlendAttachmentState) -> Self {
@@ -338,7 +348,17 @@ impl PipelineBuilder {
         self
     }
 
-    pub fn build<Ver: Vertex>(self, device: &ash::Device, vertex_module: vk::ShaderModule, fragment_module: vk::ShaderModule) -> vk::Pipeline {
+    pub fn add_polygon(mut self, poly: PolygonMode) -> Self {
+        self.poly_mode = poly;
+        self
+    }
+
+    pub fn add_wire(mut self) -> Self {
+        self.wire = true;
+        self
+    }
+
+    pub fn build<Ver: Vertex>(&self, device: &ash::Device, vertex_module: vk::ShaderModule, fragment_module: vk::ShaderModule) -> Vec<vk::Pipeline> {
         let entry_point_name = CString::new("main").unwrap();
 
         let shader_states_infos = [
@@ -364,17 +384,17 @@ impl PipelineBuilder {
             .topology(self.primitive)
             .primitive_restart_enable(false); // something to look into if I enable indexed drawing
 
-        let rasterizer_info = vk::PipelineRasterizationStateCreateInfo::default()
+        let mut rasterizer_info = [vk::PipelineRasterizationStateCreateInfo::default()
             .depth_clamp_enable(false)
             .rasterizer_discard_enable(false)
-            .polygon_mode(vk::PolygonMode::FILL)
+            .polygon_mode(self.poly_mode)
             .line_width(1.0)
             .cull_mode(self.cull_mode)
             .front_face(self.front_face)
             .depth_bias_enable(false)
             .depth_bias_constant_factor(0.0)
             .depth_bias_clamp(0.0)
-            .depth_bias_slope_factor(0.0);
+            .depth_bias_slope_factor(0.0)];
 
         // scissor and viewport is dynamic, therefor ignored here
         let viewports = [Default::default()];
@@ -406,11 +426,10 @@ impl PipelineBuilder {
         let dynamic_states = [vk::DynamicState::SCISSOR, vk::DynamicState::VIEWPORT];
         let dynamic_states_info = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
 
-        let pipeline_info = vk::GraphicsPipelineCreateInfo::default()
+        let mut pipeline_info = vk::GraphicsPipelineCreateInfo::default()
             .stages(&shader_states_infos)
             .vertex_input_state(&vertex_input_info)
             .input_assembly_state(&input_assembly_info)
-            .rasterization_state(&rasterizer_info)
             .viewport_state(&viewport_info)
             .multisample_state(&multisampling_info)
             .color_blend_state(&color_blending_info)
@@ -418,6 +437,8 @@ impl PipelineBuilder {
             .dynamic_state(&dynamic_states_info)
             .render_pass(RenderPass::null())
             .layout(self.layout);
+
+        pipeline_info.p_rasterization_state = rasterizer_info.as_ptr();
 
         let color_attachment_formats = [self.color_format];
         let mut rendering_info = {
@@ -428,17 +449,33 @@ impl PipelineBuilder {
             }
             rendering_info
         };
-        let pipeline_info = pipeline_info.push_next(&mut rendering_info);
+        let mut pipeline_info = pipeline_info.push_next(&mut rendering_info);
 
         unsafe {
-            let pipeline = device
-                .create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_info], None)
-                .unwrap()[0];
+            let mut pipelines = vec![];
+
+            pipelines.push(
+                device
+                    .create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_info], None)
+                    .unwrap()[0],
+            );
+
+            if self.wire {
+                rasterizer_info[0].polygon_mode = vk::PolygonMode::LINE;
+
+                pipeline_info.p_rasterization_state = rasterizer_info.as_ptr();
+
+                pipelines.push(
+                    device
+                        .create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_info], None)
+                        .unwrap()[0],
+                );
+            }
 
             device.destroy_shader_module(vertex_module, None);
             device.destroy_shader_module(fragment_module, None);
 
-            pipeline
+            pipelines
         }
     }
 }

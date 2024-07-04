@@ -51,7 +51,7 @@ void main() {
  // sampler2DArray normalTextureArray = samplerArray[index.normal];
   
 
-    vec4 color = texture(samplerArray[index.texture], vec3(inTexCoord, mat.face_indices[inFaceIndex]));
+    vec4 color = texture(samplerArray[index.texture], vec3(inTexCoord, 0));
 
    // vec3 lightColor = vec3(1.0f, 1.0f, 1.0f);
   //  vec3 lightPos = vec3(1, 1, 0);

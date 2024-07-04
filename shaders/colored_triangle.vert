@@ -30,6 +30,7 @@ struct CameraData{
 struct Object{
     vec3 position;
     uint texture_index;
+    vec3 scale;
 };
 
 layout(push_constant) uniform constants {
@@ -56,7 +57,7 @@ void main() {
     CameraData camData = cam[index.cam].camera;
 
     mat4 model = mat4(1.0);
-    model[3] = vec4(object.position, 1.0);
+    model[3] = vec4(1.0, 1.0, 1.0, 1.0);
 
     outNormal = vNormal;
     texCoord = vTexCoord;

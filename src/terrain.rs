@@ -4,11 +4,17 @@ use libnoise::{Generator, Source};
 
 use crate::{
     block::{BlockType, GPUBlock, Materials},
-    vulkan::mesh::{Face, VertexBlock},
+    vulkan::mesh::{Face, Vertex, VertexBlock},
 };
 
-const SURFACE_LEVEL: u32 = 50;
-const STONE_LEVEL: u32 = 80;
+struct Range {
+    start: f32,
+    end: f32,
+}
+
+// over 0.9 is surface
+const SURFACE_LEVEL: Range = Range { start: 0.9, end: 1.0 };
+const STONE_LEVEL: Range = Range { start: 0.9, end: 0.0 };
 const BASE_HEIGHT: u32 = 10;
 
 pub enum Biome {
@@ -18,6 +24,109 @@ pub enum Biome {
     Mountain,
 }
 
+pub struct Mesh {
+    vertices: Vec<VertexBlock>,
+    indices: Vec<u16>,
+}
+
+pub struct GreedyMesh;
+
+impl GreedyMesh {
+    pub fn create_greedy(mut grid: Vec<GPUBlock>) -> Vec<VertexBlock> {
+        let mut quads = vec![];
+        for y in 0..1 {
+            quads.extend(Self::create_quads(&mut grid, y));
+        }
+        quads
+    }
+
+    fn create_quads(grid: &mut Vec<GPUBlock>, y: usize) -> Vec<VertexBlock> {
+        let mut x_start = 0;
+        let mut z_start = 0;
+
+        let y_offset = y * CHUNK_AREA_LENGTH;
+
+        // find a non empty place
+        'outer: for z in 0..CHUNK_LENGTH {
+            let z_offset = z * CHUNK_LENGTH;
+            for x in 0..CHUNK_LENGTH {
+                let block = grid[x + z_offset + y_offset];
+
+                if block.block_type() != BlockType::Air {
+                    x_start = x;
+                    z_start = z;
+                    break 'outer;
+                }
+            }
+        }
+
+        let mut width = 0;
+        let mut length = 0;
+
+        let mut steps_z = 0;
+        let mut quads = vec![];
+
+        'outer: loop {
+            if (width + x_start + 1) < CHUNK_LENGTH {
+                let block = &mut grid[width + y_offset];
+
+                if block.block_type() != BlockType::Air {
+                    width += 1;
+                    block.texture_index = BlockType::Air;
+                }
+            } else {
+                // check in z direction now
+
+                loop {
+                    if (length + z_start + 1) < CHUNK_LENGTH {
+                        let z_offset = (length + z_start + 1) * CHUNK_LENGTH;
+
+                        let mut extend = true;
+                        for w in 0..width {
+                            let new_block = grid[z_offset + w + x_start].block_type();
+
+                            if new_block == BlockType::Air {
+                                extend = false;
+                                break;
+                            }
+                        }
+
+                        if extend {
+                            length += 1;
+                            for w in 0..width {
+                                let new_block = &mut grid[z_offset + w + x_start];
+                                new_block.texture_index = BlockType::Air;
+                            }
+                        } else {
+                            //
+
+                            // create quad
+                            quads.extend(VertexBlock::new_quad(
+                                Vec3::new(x_start as f32, y as f32 - 1.0, z_start as f32),
+                                Vec3::new(width as f32, 1.0, length as f32),
+                            ));
+
+                            x_start = x_start + length;
+                            z_start = z_start + 1;
+                            width = 0;
+                            length = 0;
+                            break;
+                        }
+                    } else {
+                        quads.extend(VertexBlock::new_quad(
+                            Vec3::new(x_start as f32, y as f32 - 1.0, z_start as f32),
+                            Vec3::new(width as f32, 1.0, length as f32),
+                        ));
+
+                        break 'outer;
+                    }
+                }
+            }
+        }
+
+        quads
+    }
+}
 
 pub struct World {
     player_pos: Vec3,
@@ -52,7 +161,7 @@ impl World {
         Self { player_pos, player_distance, chunk_areas }
     }
 
-    pub fn get_culled(&self) -> Vec<GPUBlock> {
+    pub fn get_culled(&self) -> Vec<VertexBlock> {
         let mut objects = vec![];
         for area in &self.chunk_areas {
             objects.extend(area.get_culled_objects().clone());
@@ -62,7 +171,7 @@ impl World {
     }
 }
 
-const CHUNK_AREA_LENGTH: usize = 4;
+const CHUNK_AREA_LENGTH: usize = 16;
 
 struct ChunkArea {
     chunks: Vec<Chunk>,
@@ -99,7 +208,7 @@ impl ChunkArea {
 
         Self { chunks, offset }
     }
-    pub fn get_culled_objects(&self) -> Vec<GPUBlock> {
+    pub fn get_culled_objects(&self) -> Vec<VertexBlock> {
         let mut culled = vec![];
         let mut ii = 0;
         for z in 1..CHUNK_AREA_LENGTH + 1 {
@@ -107,16 +216,9 @@ impl ChunkArea {
             for x in 1..CHUNK_AREA_LENGTH + 1 {
                 let block_offset = z_offset + x;
                 ii = block_offset;
-                culled.extend(self.chunks[block_offset].culled_blocks.clone());
+                culled.extend(self.chunks[block_offset].quads.clone());
             }
         }
-
-        // for i in 0..self.chunks.len() {
-        //     if i == ii {
-        //         continue;
-        //     }
-        //     culled.extend(self.chunks[i].get_objects());
-        // }
 
         culled
     }
@@ -128,6 +230,7 @@ const CHUNK_HEIGHT: usize = 90;
 
 pub struct Chunk {
     pub all_blocks: Vec<GPUBlock>,
+    pub quads: Vec<VertexBlock>,
     pub culled_blocks: Vec<GPUBlock>,
 }
 
@@ -135,8 +238,8 @@ impl Chunk {
     pub fn new(x: i32, z: i32) -> Self {
         let all_blocks = Self::generate_chunk(x, z);
         //  let all_blocks = Self::generate_chunk_test(x, z, BlockType::Air).all_blocks;
-
-        Self { all_blocks, culled_blocks: vec![] }
+        let all_blockss = all_blocks.clone();
+        Self { all_blocks, culled_blocks: vec![], quads: GreedyMesh::create_greedy(all_blockss) }
     }
 
     pub fn occlusion(&self, right: &Chunk, left: &Chunk, front: &Chunk, back: &Chunk) -> Vec<GPUBlock> {
@@ -193,7 +296,7 @@ impl Chunk {
             }
         }
 
-        Self { all_blocks: gpu_blocks, culled_blocks: vec![] }
+        Self { all_blocks: gpu_blocks, culled_blocks: vec![], quads: vec![] }
     }
 
     pub fn generate_chunk(chunk_x: i32, chunk_z: i32) -> Vec<GPUBlock> {
@@ -205,16 +308,22 @@ impl Chunk {
         let hill_effect = 15.0;
         let generator = Source::simplex(seed).add(1.0).scale([0.2, 0.2]);
 
+        let surface_start = (SURFACE_LEVEL.start * CHUNK_HEIGHT as f32).round() as u32;
+
         for x in 0..CHUNK_LENGTH {
             for z in 0..CHUNK_LENGTH {
                 let nx = (x as f64 + x_start as f64) / CHUNK_LENGTH as f64;
                 let nz = (z as f64 + z_start as f64) / CHUNK_LENGTH as f64;
-                grid[x][z] =
-                    (((generator.sample([nx as f64, nz as f64]) * hill_effect).round() / hill_effect) * amplitude).round() as u32 + BASE_HEIGHT;
+                grid[x][z] = surface_start;
+                // grid[x][z] =
+                //     (((generator.sample([nx as f64, nz as f64]) * hill_effect).round() / hill_effect) * amplitude).round() as u32 + surface_start;
             }
         }
 
         let mut gpu_blocks = vec![];
+
+        let surface_end = (SURFACE_LEVEL.end * CHUNK_HEIGHT as f32).round();
+
         for y in 0..CHUNK_HEIGHT {
             for z in 0..CHUNK_LENGTH {
                 for x in 0..CHUNK_LENGTH {
@@ -222,13 +331,10 @@ impl Chunk {
                     if height < y as u32 {
                         gpu_blocks.push(GPUBlock::new(Vec3::new(x as f32 + x_start, y as f32, z as f32 + z_start), BlockType::Air))
                     } else {
-                        if y as u32 > SURFACE_LEVEL {
-                            gpu_blocks.push(GPUBlock::new(Vec3::new(x as f32 + x_start, y as f32, z as f32 + z_start), BlockType::Sand));
+                        if y as u32 >= surface_start {
+                            gpu_blocks.push(GPUBlock::new(Vec3::new(x as f32 + x_start, y as f32, z as f32 + z_start), BlockType::Dirt));
                         } else {
                             gpu_blocks.push(GPUBlock::new(Vec3::new(x as f32 + x_start, y as f32, z as f32 + z_start), BlockType::Stone));
-                        }
-                        if height > SURFACE_LEVEL {
-                            gpu_blocks.push(GPUBlock::new(Vec3::new(x as f32 + x_start, height as f32, z as f32 + z_start), BlockType::Grass));
                         }
                     }
                 }
@@ -248,14 +354,15 @@ impl Chunk {
     }
 
     pub fn get_objects(&self) -> Vec<GPUBlock> {
-        let mut culled = vec![];
+        // let mut culled = vec![];
 
-        for i in 0..self.all_blocks.len() {
-            if self.all_blocks[i].block_type().bit_mask() != BlockType::Air.bit_mask() {
-                culled.push(self.all_blocks[i]);
-            }
-        }
-        culled
+        // for i in 0..self.all_blocks.len() {
+        //     if self.all_blocks[i].block_type().bit_mask() != BlockType::Air.bit_mask() {
+        //         culled.push(self.all_blocks[i]);
+        //     }
+        // }
+        // self.quads.clone()
+        todo!();
     }
 
     fn get_block_up_bitmask(blocks: &Vec<GPUBlock>, current_offset: usize, current_y: usize) -> u64 {

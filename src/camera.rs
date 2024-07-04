@@ -44,7 +44,11 @@ struct Plane {
 impl Plane {
     pub fn new(p1: Vec3, norm: Vec3) -> Self {
         let distance = norm.dot(p1);
-        Self { normal:norm, distance }
+        Self { normal: norm, distance }
+    }
+
+    pub fn new_with_distance(distance: f32, norm: Vec3) -> Self {
+        Self { normal: norm, distance }
     }
 
     pub fn get_signed_distance(&self, point: glm::Vec3) -> f32 {
@@ -64,17 +68,17 @@ pub struct Frustum {
 impl Frustum {
     pub fn new(cam: &Camera) -> Frustum {
         let cam_right = cam.front.cross(cam.up).normalized();
+        let up = cam_right.cross(cam.front).normalized();
 
         let aspect = cam.aspect;
 
         let h_far_h = cam.far * (cam.fovy * 0.5).tan();
-        let w_far_h = h_far_h * aspect;
 
         let h_near_h = cam.near * (cam.fovy * 0.5).tan();
         let w_near_h = h_near_h * aspect;
 
         // NEAR points
-        let near_center = cam.pos + cam.near * cam.front;
+        let near_center = cam.pos + (cam.near) * cam.front;
 
         // FAR points
 
@@ -83,15 +87,15 @@ impl Frustum {
         // PLANES
 
         let right_point = near_center + cam_right * w_near_h;
-        let right_dir = cam.up.cross((right_point - cam.pos).normalized());
+        let right_dir = up.cross((right_point - cam.pos).normalized());
 
         let left_point = near_center - cam_right * w_near_h;
-        let left_dir = (left_point - cam.pos).normalized().cross(cam.up);
+        let left_dir = (left_point - cam.pos).normalized().cross(up);
 
-        let top_point = near_center + cam.up * h_near_h;
+        let top_point = near_center + up * h_near_h;
         let top_dir = (top_point - cam.pos).normalized().cross(cam_right);
 
-        let bot_point = top_point - cam.up * h_near_h * 2.0;
+        let bot_point = top_point - up * h_near_h * 2.0;
         let bot_dir = cam_right.cross((bot_point - cam.pos).normalized());
 
         let near = Plane::new(near_center, cam.front);
@@ -108,6 +112,25 @@ impl Frustum {
         let mut p = Vec3::new(pos.x - 0.5, pos.y - 0.5, pos.z - 0.5);
 
         let mut n = Vec3::new(pos.x + 0.5, pos.y + 0.5, pos.z + 0.5);
+        let from_center = 0.5;
+        // let points = vec![
+        //     Vec3::new(pos.x - from_center, pos.y + from_center, pos.z + from_center),
+        //     Vec3::new(pos.x + from_center, pos.y + from_center, pos.z + from_center),
+        //     Vec3::new(pos.x - from_center, pos.y - from_center, pos.z + from_center),
+        //     Vec3::new(pos.x + from_center, pos.y - from_center, pos.z + from_center),
+        //     Vec3::new(pos.x - from_center, pos.y + from_center, pos.z - from_center),
+        //     Vec3::new(pos.x + from_center, pos.y + from_center, pos.z - from_center),
+        //     Vec3::new(pos.x - from_center, pos.y - from_center, pos.z - from_center),
+        //     Vec3::new(pos.x + from_center, pos.y - from_center, pos.z - from_center),
+        //     Vec3::new(pos.x + from_center, pos.y + from_center, pos.z - from_center),
+        //     Vec3::new(pos.x + from_center, pos.y + from_center, pos.z + from_center),
+        //     Vec3::new(pos.x + from_center, pos.y - from_center, pos.z - from_center),
+        //     Vec3::new(pos.x + from_center, pos.y - from_center, pos.z + from_center),
+        //     Vec3::new(pos.x - from_center, pos.y + from_center, pos.z - from_center),
+        //     Vec3::new(pos.x - from_center, pos.y + from_center, pos.z + from_center),
+        //     Vec3::new(pos.x - from_center, pos.y - from_center, pos.z - from_center),
+        //     Vec3::new(pos.x - from_center, pos.y - from_center, pos.z + from_center),
+        // ];
 
         if plane.normal.x >= 0.0 {
             p.x += 1.0;
@@ -123,34 +146,35 @@ impl Frustum {
             n.z -= 1.0;
         }
 
-        if plane.get_signed_distance(p) < 0.0 {
-            return false;
+        // if !(plane.get_signed_distance(n) < 0.0) {
+        //     return true;
+        // }
+        if !(plane.get_signed_distance(p) < 0.0) {
+            return true;
         }
-        if plane.get_signed_distance(n) < 0.0 {
-            return false;
-        }
-        return true;
+
+        return false;
     }
 
     pub fn is_block(&self, block: GPUBlock) -> bool {
-        // if !Self::in_plane(&self.right, block.position) {
-        //     return false;
-        // }
+        if !Self::in_plane(&self.right, block.position) {
+            return false;
+        }
 
         if !Self::in_plane(&self.left, block.position) {
             return false;
         }
 
-        // if !Self::in_plane(&self.top, block.position) {
-        //     return false;
-        // }
+        if !Self::in_plane(&self.top, block.position) {
+            return false;
+        }
 
-        // if !Self::in_plane(&self.bot, block.position) {
-        //     return false;
-        // }
-        // if !Self::in_plane(&self.far, block.position) {
-        //     return false;
-        // }
+        if !Self::in_plane(&self.bot, block.position) {
+            return false;
+        }
+        if !Self::in_plane(&self.far, block.position) {
+            return false;
+        }
         if !Self::in_plane(&self.near, block.position) {
             return false;
         }
@@ -184,7 +208,7 @@ pub struct Camera {
 impl Camera {
     pub fn new(extent: vk::Extent2D) -> Self {
         let aspect = extent.width as f32 / extent.height as f32;
-        let fovy = f32::from(70.0).to_radians();
+        let fovy = f32::from(45.0).to_radians();
         let near = 0.1;
         let far = 200.0;
         let yaw = 0.0;
@@ -211,6 +235,8 @@ impl Camera {
         self.aspect = extent.width as f32 / extent.height as f32;
         self.extent = extent;
         self.projection = glm::projection::perspective_vk(self.fovy, self.aspect, self.near, self.far);
+
+        println!("extent {:?}\n", extent);
     }
 
     pub fn process_keyboard(&mut self, controls: &Controls, delta_time: f64) {

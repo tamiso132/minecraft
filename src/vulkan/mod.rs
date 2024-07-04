@@ -187,7 +187,7 @@ impl ImguiContext {
             Self {
                 imgui,
                 platform,
-                pipeline,
+                pipeline: pipeline[0],
                 texture_atlas: fonts_texture,
                 texture,
                 vertex_buffers,
@@ -439,6 +439,7 @@ impl VulkanContext {
                 .ext_image_cube_array()
                 .ext_sampler_anisotropy()
                 .ext_bindless_descriptors()
+                .fill_mode_non_solid()
                 .select_physical_device(&instance)
                 .build(&instance);
             log::info!("device instance is built");

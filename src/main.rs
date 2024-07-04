@@ -7,12 +7,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use ash::vk::{self};
+use ash::vk::{self, PolygonMode};
 use block::{GPUBlock, GPUTexture, Materials};
 use camera::{Camera, Controls, Frustum, GPUCamera};
 use env_logger::Builder;
 use glm::Vec3;
-use terrain::{Chunk, SimplexNoise, World};
+use terrain::{Chunk, GreedyMesh, SimplexNoise, World};
 use vulkan::{
     builder::{self, ComputePipelineBuilder},
     mesh::VertexBlock,
@@ -41,7 +41,7 @@ struct Application {
     push_constant: SkyBoxPushConstant,
     last_frame: Instant,
 
-    pipeline: vk::Pipeline,
+    pipeline: Vec<vk::Pipeline>,
     vertex_buffer: AllocatedBuffer,
 
     key_pressed: HashMap<KeyCode, bool>,
@@ -62,7 +62,10 @@ struct Application {
     world: World,
     is_frustum: bool,
 
+    vertex_block: Vec<VertexBlock>,
+
     culled: Vec<GPUBlock>,
+    pipeline_index: i32,
 }
 
 #[repr(C, align(16))]
@@ -100,8 +103,12 @@ impl Application {
         let compute = ComputePipelineBuilder::new(comp_skybox).build(&vulkan.device, vulkan.pipeline_layout);
         let mesh = VertexBlock::get_mesh();
 
+        let cam = Camera::new(vulkan.window_extent);
+        let world = World::new(cam.get_pos(), 4);
+        let objects = world.get_culled();
+
         let vertex_buffer = vulkan.resources.create_buffer_non_descriptor(
-            mesh.len() as u64 * size_of::<VertexBlock>() as u64,
+            objects.len() as u64 * size_of::<VertexBlock>() as u64,
             BufferType::Vertex,
             Memory::Local,
             vulkan.graphic.family,
@@ -110,10 +117,6 @@ impl Application {
 
         let mut frame_data = vec![];
         //let objects = AreaGenerator::generate_around((0, 0));
-        let cam = Camera::new(vulkan.window_extent);
-        let world = World::new(cam.get_pos(), 4);
-
-        let objects = world.get_culled();
 
         let texture_loaded = util::load_texture_array("texture_atlas_0.png", 64);
 
@@ -129,10 +132,9 @@ impl Application {
         );
 
         util::begin_cmd(&vulkan.device, vulkan.cmds[0]);
-
         vulkan
             .resources
-            .write_to_buffer_local(vulkan.cmds[0], &vertex_buffer, util::slice_as_u8(mesh));
+            .write_to_buffer_local(vulkan.cmds[0], &vertex_buffer, util::slice_as_u8(&objects));
 
         vulkan
             .resources
@@ -201,12 +203,13 @@ impl Application {
         let vertex = util::create_shader(&vulkan.device, "shaders/spv/colored_triangle.vert.spv".to_owned());
         let frag = util::create_shader(&vulkan.device, "shaders/spv/colored_triangle.frag.spv".to_owned());
 
-        let pipeline = builder::PipelineBuilder::new()
+        let pipelines = builder::PipelineBuilder::new()
             .add_layout(vulkan.pipeline_layout)
             .add_color_format(vulkan.get_swapchain_format())
             .add_depth(vulkan.get_depth_format(), true, true, vk::CompareOp::LESS_OR_EQUAL)
             .cull_mode(vk::CullModeFlags::BACK, vk::FrontFace::CLOCKWISE)
             .add_topology(vk::PrimitiveTopology::TRIANGLE_LIST)
+            .add_wire()
             .build::<VertexBlock>(&vulkan.device, vertex, frag);
 
         vulkan.window.set_cursor_grab(CursorGrabMode::None).unwrap();
@@ -221,7 +224,7 @@ impl Application {
             compute,
             push_constant: SkyBoxPushConstant::new(),
             last_frame: Instant::now(),
-            pipeline,
+            pipeline: pipelines,
             vertex_buffer,
             key_pressed: HashMap::new(),
             controls: Controls::new(),
@@ -232,9 +235,11 @@ impl Application {
             texture_atlas,
             material_buffer,
             world,
-            objects,
+            objects: vec![],
             is_frustum: false,
             culled: vec![],
+            pipeline_index: 0,
+            vertex_block: objects,
         }
     }
 
@@ -290,7 +295,7 @@ impl Application {
         // TODO, make it write directly to the swapchain image
         /*Update Camera */
         let gpu_cam = vec![self.cam.get_gpu_camera()];
-
+        let len;
         if self.is_frustum {
             let frustum = Frustum::new(&self.cam);
             self.culled.clear();
@@ -300,7 +305,11 @@ impl Application {
                     self.culled.push(object)
                 }
             }
+            len = self.culled.len();
             self.vulkan.resources.write_to_buffer_host(&mut data.objects, slice_as_u8(&self.culled));
+        } else {
+            len = self.objects.len();
+            self.vulkan.resources.write_to_buffer_host(&mut data.objects, slice_as_u8(&self.objects));
         }
 
         self.vulkan
@@ -317,10 +326,12 @@ impl Application {
 
         let scissor = vk::Rect2D::default().extent(self.vulkan.window_extent);
 
+        let pipeline = self.pipeline[self.pipeline_index as usize];
+
         device.cmd_set_viewport(cmd, 0, &[viewport]);
         device.cmd_set_scissor(cmd, 0, &[scissor]);
 
-        device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
+        device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, pipeline);
 
         device.cmd_bind_vertex_buffers(cmd, 0, &[self.vertex_buffer.buffer], &vec![0]);
 
@@ -342,7 +353,7 @@ impl Application {
             std::slice::from_raw_parts(&push_main as *const _ as *const u8, std::mem::size_of::<CMainPipeline>()),
         );
 
-        device.cmd_draw(cmd, VertexBlock::get_mesh().len() as u32, self.culled.len() as u32, 0, 0);
+        device.cmd_draw(cmd, self.vertex_block.len() as u32, 4, 0, 0);
 
         self.vulkan.end_rendering();
 
@@ -355,6 +366,7 @@ impl Application {
         ui.input_float4("Data3", &mut self.push_constant.data3).build();
         ui.input_float4("Data4", &mut self.push_constant.data4).build();
         ui.checkbox("Frustum", &mut self.is_frustum);
+        ui.input_int("pipeline index", &mut self.pipeline_index).build();
 
         let set = self.vulkan.resources.set;
 
@@ -491,7 +503,12 @@ impl Application {
                 self.vulkan.device.destroy_image_view(frame.compute_image.view, None);
             }
 
-            self.vulkan.device.destroy_pipeline(self.pipeline, None);
+            for pipeline in self.pipeline.clone() {
+                self.vulkan.device.destroy_pipeline(pipeline, None);
+            }
+
+            self.pipeline.clear();
+
             self.vulkan
                 .allocator
                 .destroy_image(self.texture_atlas.image, &mut self.texture_atlas.alloc.as_mut().unwrap());
