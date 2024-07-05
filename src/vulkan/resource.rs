@@ -1,9 +1,4 @@
-use std::{
-    ffi::{c_void, CString},
-    mem::{ManuallyDrop, MaybeUninit},
-    ptr,
-    sync::Arc,
-};
+use std::{ffi::CString, ptr, sync::Arc};
 
 use ash::vk::{
     self, BufferUsageFlags, DebugUtilsObjectNameInfoEXT, DescriptorType, Extent2D, Extent3D, Handle, ImageLayout, ImageSubresourceRange,
@@ -494,6 +489,7 @@ impl Resource {
         let filter = vk::Filter::LINEAR;
 
         let miplevel = (data.grid as f32).log2().floor() as u32 + 1;
+        //let miplevel = 1;
 
         let (image_info, alloc_info) =
             init::image_info(Extent2D { width: grid_size, height: grid_size }, 4, memory, vk::Format::R8G8B8A8_SRGB, usage);

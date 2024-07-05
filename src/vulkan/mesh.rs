@@ -2,9 +2,8 @@ use std::mem;
 
 use ash::vk;
 use glm::{Vec2, Vec3};
-use imgui::draw_list;
 
-use crate::block::{BlockType, GPUBlock};
+use crate::terrain::block::{BlockType, GPUBlock};
 
 pub trait Vertex {
     fn get_vertex_attribute_desc() -> Vec<vk::VertexInputAttributeDescription>;
@@ -190,14 +189,14 @@ impl VertexBlock {
         let top_order = vec![front_t_l, front_t_r, back_t_l, back_t_l, back_t_r, front_t_l];
 
         let top_uv = vec![
-            Vec2::new(size.x, 0.0),
             Vec2::new(0.0, size.z),
+            Vec2::new(size.x, size.z),
+            Vec2::new(size.x, 0.0),
+            Vec2::new(size.x, 0.0),
             Vec2::new(0.0, 0.0),
             Vec2::new(0.0, size.z),
-            Vec2::new(size.x, 0.0),
-            Vec2::new(size.x, size.z),
         ];
-       
+
         let bot_order = vec![front_b_l, back_b_l, front_b_r, back_b_l, front_b_l, back_b_r];
 
         let bot_uv = vec![

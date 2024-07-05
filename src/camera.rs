@@ -11,7 +11,7 @@ use winit::{
     keyboard::{KeyCode, SmolStr},
 };
 
-use crate::block::GPUBlock;
+use crate::terrain::block::GPUBlock;
 
 pub struct Controls {
     letters: [bool; 193],

@@ -1,6 +1,4 @@
-use std::marker::PhantomData;
-
-use glm::{Mat4, Vec3, Vec4};
+use glm::{Vec3, Vec4};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(C, align(4))]

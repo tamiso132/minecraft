@@ -1,9 +1,5 @@
-use std::ffi::CString;
-
-use ash::vk::{self, BlendFactor, BlendOp, ImageTiling, MemoryPropertyFlags, PipelineColorBlendAttachmentState};
+use ash::vk::{self, ImageTiling, MemoryPropertyFlags, PipelineColorBlendAttachmentState};
 use vk_mem::AllocationCreateFlags;
-
-use super::resource::AllocatedImage;
 
 pub fn image_subresource_info(aspect: vk::ImageAspectFlags) -> vk::ImageSubresourceRange {
     vk::ImageSubresourceRange::default()
@@ -143,8 +139,6 @@ pub fn image_barrier_info(
         .old_layout(old_layout)
         .new_layout(new_layout)
 }
-
-
 
 pub fn color_blend_state_info() -> PipelineColorBlendAttachmentState {
     vk::PipelineColorBlendAttachmentState::default()

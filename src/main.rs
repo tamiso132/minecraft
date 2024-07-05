@@ -2,17 +2,15 @@
 
 use std::{
     collections::HashMap,
-    hash::RandomState,
     mem::transmute,
     time::{Duration, Instant},
 };
 
-use ash::vk::{self, PolygonMode};
-use block::{GPUBlock, GPUTexture, Materials};
+use ash::vk::{self};
 use camera::{Camera, Controls, Frustum, GPUCamera};
 use env_logger::Builder;
-use glm::Vec3;
-use terrain::{Chunk, GreedyMesh, SimplexNoise, World};
+use terrain::block::{GPUBlock, GPUTexture, Materials};
+use terrain::World;
 use vulkan::{
     builder::{self, ComputePipelineBuilder},
     mesh::VertexBlock,
@@ -26,11 +24,11 @@ use winit::{
     keyboard::KeyCode,
     window::CursorGrabMode,
 };
-mod block;
 mod camera;
 mod physics;
 mod terrain;
 mod vulkan;
+
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
 /// There should only be application relevant information in these functions
@@ -235,11 +233,11 @@ impl Application {
             texture_atlas,
             material_buffer,
             world,
-            objects: vec![],
+            objects,
             is_frustum: false,
             culled: vec![],
             pipeline_index: 0,
-            vertex_block: objects,
+            vertex_block: vec![],
         }
     }
 

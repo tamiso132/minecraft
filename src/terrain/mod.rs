@@ -1,11 +1,13 @@
 use ash::vk::ObjectType;
+use block::{BlockType, GPUBlock};
 use glm::{Mat4, Vec3};
 use libnoise::{Generator, Source};
+use octree::Octree;
 
-use crate::{
-    block::{BlockType, GPUBlock, Materials},
-    vulkan::mesh::{Face, Vertex, VertexBlock},
-};
+use crate::vulkan::mesh::{Face, Vertex, VertexBlock};
+
+pub mod block;
+pub mod octree;
 
 struct Range {
     start: f32,
@@ -132,25 +134,27 @@ pub struct World {
     player_pos: Vec3,
     player_distance: usize,
 
-    chunk_areas: Vec<ChunkArea>,
+    root: Octree,
 }
 
 impl World {
     /// Player distance in chunk range
     pub fn new(player_pos: Vec3, player_distance: usize) -> Self {
-        let chunk_start_x = (player_pos.x as f64 / CHUNK_LENGTH as f64) - 2 as f64;
-        let chunk_start_z = (player_pos.z as f64 / CHUNK_LENGTH as f64) - 2 as f64;
+        let root = Octree::new(glm::Vec2::new(player_pos.x, player_pos.z), player_distance, 5);
 
-        let chunk_area_x = (chunk_start_x / CHUNK_AREA_LENGTH as f64).floor() as i32;
-        let chunk_area_z = (chunk_start_z / CHUNK_AREA_LENGTH as f64).floor() as i32;
+        // let chunk_start_x = (player_pos.x as f64 / CHUNK_LENGTH as f64) - 2 as f64;
+        // let chunk_start_z = (player_pos.z as f64 / CHUNK_LENGTH as f64) - 2 as f64;
 
-        let chunk_distance = 2 * 2;
+        // let chunk_area_x = (chunk_start_x / CHUNK_AREA_LENGTH as f64).floor() as i32;
+        // let chunk_area_z = (chunk_start_z / CHUNK_AREA_LENGTH as f64).floor() as i32;
 
-        let area_amount = (chunk_distance as f64 / CHUNK_AREA_LENGTH as f64).ceil() as i32;
+        // let chunk_distance = 2 * 2;
 
-        let mut chunk_areas = vec![];
+        // let area_amount = (chunk_distance as f64 / CHUNK_AREA_LENGTH as f64).ceil() as i32;
 
-        chunk_areas.push(ChunkArea::new((chunk_area_x, chunk_area_z)));
+        // let mut chunk_areas = vec![];
+
+        // chunk_areas.push(ChunkArea::new((chunk_area_x, chunk_area_z)));
 
         // for z in 0..area_amount {
         //     for x in 0..area_amount {
@@ -158,16 +162,19 @@ impl World {
         //     }
         // }
 
-        Self { player_pos, player_distance, chunk_areas }
+        Self { player_pos, player_distance, root }
     }
 
-    pub fn get_culled(&self) -> Vec<VertexBlock> {
-        let mut objects = vec![];
-        for area in &self.chunk_areas {
-            objects.extend(area.get_culled_objects().clone());
-        }
+    pub fn get_culled(&self, player_pos: Vec3) -> Vec<GPUBlock> {
+        // let mut objects = vec![];
+        // for area in &self.chunk_areas {
+        //     objects.extend(area.get_culled_objects().clone());
+        // }
 
-        objects
+        // objects
+
+        let node = self.root.find_node(glm::Vec2::new(player_pos.x, player_pos.z));
+        node.get_objects()
     }
 }
 
@@ -225,7 +232,8 @@ impl ChunkArea {
 }
 
 /// Save the chunks into a uniform buffer with their model. Then the object will
-const CHUNK_LENGTH: usize = 16;
+pub const CHUNK_LENGTH: usize = 16;
+pub const VOXEL_SCALE: f32 = 1.0;
 const CHUNK_HEIGHT: usize = 90;
 
 pub struct Chunk {

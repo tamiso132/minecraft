@@ -1,12 +1,9 @@
-use std::{ffi::CString, fs::File, io::Read, mem, slice, sync::Arc};
+use std::{ffi::CString, fs::File, io::Read, mem, slice};
 
 use ash::{
     khr::swapchain,
     prelude::VkResult,
-    vk::{
-        self, AccessFlags, BufferImageCopy, CommandBufferLevel, CommandPool, DependencyFlags, ImageAspectFlags, ImageLayout, Offset3D,
-        ShaderStageFlags, SubmitInfo,
-    },
+    vk::{self, AccessFlags, BufferImageCopy, CommandBufferLevel, CommandPool, DependencyFlags, ImageAspectFlags, ImageLayout, Offset3D, SubmitInfo},
 };
 
 use crate::vulkan::{TKQueue, VulkanContext};
