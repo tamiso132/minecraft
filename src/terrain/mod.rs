@@ -232,7 +232,7 @@ impl ChunkArea {
 }
 
 /// Save the chunks into a uniform buffer with their model. Then the object will
-pub const CHUNK_LENGTH: usize = 16;
+pub const CHUNK_LENGTH: usize = 64;
 pub const VOXEL_SCALE: f32 = 1.0;
 const CHUNK_HEIGHT: usize = 90;
 
@@ -240,6 +240,7 @@ pub struct Chunk {
     pub all_blocks: Vec<GPUBlock>,
     pub quads: Vec<VertexBlock>,
     pub culled_blocks: Vec<GPUBlock>,
+    pub binary_grid: Vec<u64>,
 }
 
 impl Chunk {
@@ -250,26 +251,9 @@ impl Chunk {
         Self { all_blocks, culled_blocks: vec![], quads: GreedyMesh::create_greedy(all_blockss) }
     }
 
-    pub fn occlusion(&self, right: &Chunk, left: &Chunk, front: &Chunk, back: &Chunk) -> Vec<GPUBlock> {
-        Self::occlusion_cull(&self.all_blocks, &right, &left, &front, &back)
-    }
-
-    pub fn test_occulusion() -> Vec<GPUBlock> {
-        // let center_x = 1;
-        // let center_y = 1;
-
-        // // let mut right = Self::generate_chunk_test(center_x + 1, center_y, BlockType::Air);
-        // // let mut left = Self::generate_chunk_test(center_x - 1, center_y, BlockType::Air);
-        // // let mut front = Self::generate_chunk_test(center_x, center_y + 1, BlockType::Air);
-        // // let mut back = Self::generate_chunk_test(center_x, center_y - 1, BlockType::Air);
-
-        // // let center = Self::generate_chunk(center_x, center_y);
-
-        // let mut culled_objects = Self::occlusion_cull(&center, &right, &left, &front, &back);
-        // culled_objects
-
-        todo!();
-    }
+    fn update_binary_mask(&mut self) {
+        let mut grid: Vec<u64> = Vec::with_capacity(64 * 64);
+    }   
 
     pub fn generate_chunk_test(chunk_x: i32, chunk_z: i32, block_type: BlockType) -> Chunk {
         let x_start = chunk_x as f32 * CHUNK_LENGTH as f32;
