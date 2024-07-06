@@ -1,0 +1,3 @@
+[submodule "voxelengine"]
+	path = voxelengine
+	url = https://github.com/tamiso132/voxelengine.git

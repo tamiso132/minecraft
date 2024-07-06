@@ -7,16 +7,19 @@ use std::{
 };
 
 use ash::vk::{self};
-use camera::{Camera, Controls, Frustum, GPUCamera};
 use env_logger::Builder;
-use terrain::block::{GPUBlock, GPUTexture, Materials};
-use terrain::World;
-use vulkan::{
-    builder::{self, ComputePipelineBuilder},
-    mesh::VertexBlock,
-    resource::{AllocatedBuffer, AllocatedImage, BufferType, Memory},
-    util::{self, slice_as_u8},
-    SkyBoxPushConstant, VulkanContext,
+use voxelengine::{
+    core::camera::{Camera, Controls, Frustum, GPUCamera},
+    terrain::{
+        block::{GPUBlock, GPUTexture, Materials},
+        World,
+    },
+    vulkan::{
+        builder::{self, ComputePipelineBuilder},
+        mesh::VertexBlock,
+        resource::{AllocatedBuffer, AllocatedImage, BufferType, Memory},
+        util, SkyBoxPushConstant, VulkanContext,
+    },
 };
 use winit::{
     event::{self, ElementState, Event, WindowEvent},
@@ -24,10 +27,6 @@ use winit::{
     keyboard::KeyCode,
     window::CursorGrabMode,
 };
-mod camera;
-mod physics;
-mod terrain;
-mod vulkan;
 
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
@@ -103,7 +102,8 @@ impl Application {
 
         let cam = Camera::new(vulkan.window_extent);
         let world = World::new(cam.get_pos(), 4);
-        let objects = world.get_culled();
+        //let objects = world.get_culled();
+        let objects = vec![];
 
         let vertex_buffer = vulkan.resources.create_buffer_non_descriptor(
             objects.len() as u64 * size_of::<VertexBlock>() as u64,
@@ -186,7 +186,7 @@ impl Application {
                 normal: 0,
                 material: material_buffer.index as u32,
             };
-            vulkan.resources.write_to_buffer_host(&mut object, slice_as_u8(&objects));
+            vulkan.resources.write_to_buffer_host(&mut object, util::slice_as_u8(&objects));
 
             vulkan
                 .resources
@@ -299,15 +299,19 @@ impl Application {
             self.culled.clear();
             for i in 0..self.objects.len() {
                 let object = self.objects[i].clone();
-                if frustum.is_block(object) {
+                if frustum.is_inside(object.position) {
                     self.culled.push(object)
                 }
             }
             len = self.culled.len();
-            self.vulkan.resources.write_to_buffer_host(&mut data.objects, slice_as_u8(&self.culled));
+            self.vulkan
+                .resources
+                .write_to_buffer_host(&mut data.objects, util::slice_as_u8(&self.culled));
         } else {
             len = self.objects.len();
-            self.vulkan.resources.write_to_buffer_host(&mut data.objects, slice_as_u8(&self.objects));
+            self.vulkan
+                .resources
+                .write_to_buffer_host(&mut data.objects, util::slice_as_u8(&self.objects));
         }
 
         self.vulkan
