@@ -42,8 +42,6 @@ struct GameApplication {
     pipeline: Vec<vk::Pipeline>,
     vertex_buffer: AllocatedBuffer,
 
-    key_pressed: HashMap<KeyCode, bool>,
-
     cam: Camera,
     controls: Controls,
     frame_data: Vec<FrameData>,
@@ -67,8 +65,7 @@ struct GameApplication {
 }
 
 impl ApplicationTrait for GameApplication {
-    fn on_new() -> Self {
-        let event_loop = EventLoop::new().unwrap();
+    fn on_new(event_loop: &EventLoop<()>) -> Self {
         Builder::new().filter_level(log::LevelFilter::Info).init();
 
         let mut vulkan = VulkanContext::new(&event_loop, MAX_FRAMES_IN_FLIGHT, true);
@@ -201,7 +198,6 @@ impl ApplicationTrait for GameApplication {
             last_frame: Instant::now(),
             pipeline: pipelines,
             vertex_buffer,
-            key_pressed: HashMap::new(),
             controls: Controls::new(),
             frame_data,
             focus: false,
@@ -476,8 +472,8 @@ extern crate ultraviolet as glm;
 
 impl GameApplication {
     const HZ_MAX: i64 = (1000.0 / 60.0) as i64;
-    fn new() -> Self {
-        ApplicationTrait::on_new()
+    fn new(event_loop: &EventLoop<()>) -> Self {
+        ApplicationTrait::on_new(event_loop)
     }
 
     // need to rebuild the swapchain and any resources that depend on the window extent
@@ -486,19 +482,17 @@ impl GameApplication {
         unsafe {
             self.vulkan.device.device_wait_idle().unwrap();
         }
-        let window_extent_physical = self.vulkan.window.inner_size();
-        let extent = vk::Extent2D { width: window_extent_physical.width, height: window_extent_physical.height };
 
-        self.vulkan.recreate_swapchain(extent);
+        self.vulkan.recreate_swapchain();
 
         log::info!("recreate computation images");
 
         // TODO, recreate my general image
         for image in &mut self.frame_data {
-            self.vulkan.resources.resize_image(&mut image.compute_image, extent);
+            self.vulkan.resources.resize_image(&mut image.compute_image, self.vulkan.window_extent);
         }
 
-        self.cam.resize_window(extent);
+        self.cam.resize_window(self.vulkan.window_extent);
         self.resize = false;
     }
 }
@@ -507,7 +501,7 @@ fn main() {
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(event_loop::ControlFlow::Poll);
 
-    let mut application: Application<GameApplication> = Application::new();
+    let mut application: Application<GameApplication> = Application::new(&event_loop);
 
     application.run(event_loop);
 }
