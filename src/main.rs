@@ -9,7 +9,6 @@ use std::{
 use ash::vk::{self};
 use env_logger::Builder;
 use voxelengine::{
-    application::{Application, ApplicationTrait},
     core::camera::{Camera, Controls, Frustum, GPUCamera},
     terrain::{
         block::{GPUBlock, GPUTexture, Materials},
@@ -21,6 +20,7 @@ use voxelengine::{
         resource::{AllocatedBuffer, AllocatedImage, BufferType, Memory},
         util, SkyBoxPushConstant, VulkanContext,
     },
+    App::{App, ApplicationTrait},
 };
 use winit::{
     event::{self, ElementState, Event, RawKeyEvent, WindowEvent},
@@ -356,7 +356,6 @@ impl ApplicationTrait for GameApplication {
                 self.vulkan.current_frame,
                 &mut self.vulkan.resources,
                 cmd,
-                &self.vulkan.window,
                 set,
             );
 
@@ -501,7 +500,7 @@ fn main() {
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(event_loop::ControlFlow::Poll);
 
-    let mut application: Application<GameApplication> = Application::new(&event_loop);
+    let mut application: App<GameApplication> = App::new(&event_loop);
 
     application.run(event_loop);
 }
