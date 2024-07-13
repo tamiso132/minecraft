@@ -76,9 +76,10 @@ impl ApplicationTrait for GameApplication {
 
         let cam = Camera::new(vulkan.window_extent);
         let world = World::new(cam.get_pos(), 4);
+
         //let objects = world.get_culled();
         let objects = vec![];
-
+        todo!();
         let vertex_buffer = vulkan.resources.create_buffer_non_descriptor(
             objects.len() as u64 * size_of::<VertexBlock>() as u64,
             BufferType::Vertex,
@@ -442,6 +443,10 @@ impl ApplicationTrait for GameApplication {
                 .destroy_buffer(self.vertex_buffer.buffer, &mut self.vertex_buffer.alloc);
         }
         self.vulkan.destroy();
+    }
+
+    fn set_imgui_draw(&mut self, imgui_func: fn(ui: &mut imgui::Ui)) {
+        todo!()
     }
 }
 
