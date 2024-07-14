@@ -17,7 +17,7 @@ use voxelengine::{
     vulkan::{
         builder::{self, ComputePipelineBuilder},
         mesh::VertexBlock,
-        resource::{AllocatedBuffer, AllocatedImage, BufferType, Memory},
+        resource::{self, AllocatedBuffer, AllocatedImage, BufferBuilder, BufferType, Memory},
         util, SkyBoxPushConstant, VulkanContext,
     },
     App::{App, ApplicationTrait},
@@ -28,7 +28,7 @@ use winit::{
     keyboard::KeyCode,
     window::CursorGrabMode,
 };
-
+mod test;
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
 /// There should only be application relevant information in these functions
@@ -80,45 +80,67 @@ impl ApplicationTrait for GameApplication {
         //let objects = world.get_culled();
         let objects = vec![];
         todo!();
-        let vertex_buffer = vulkan.resources.create_buffer_non_descriptor(
-            objects.len() as u64 * size_of::<VertexBlock>() as u64,
-            BufferType::Vertex,
-            Memory::Local,
-            vulkan.graphic.family,
-            "vertexBuffer".to_owned(),
-        );
 
-        let mut frame_data = vec![];
-        //let objects = AreaGenerator::generate_around((0, 0));
+        // RESOURCES
+        let mut buffer_builder = BufferBuilder::new();
+        let mats = Materials::get_all();
 
         let texture_loaded = util::load_texture_array("texture_atlas_0.png", 64);
 
-        let texture_atlas = vulkan.resources.create_texture_array(texture_loaded, "texture_atlas".to_owned());
-
-        let mats = Materials::get_all();
-        let material_buffer = vulkan.resources.create_buffer(
-            mats.len() as u64 * size_of::<GPUTexture>() as u64,
-            BufferType::Storage,
-            Memory::Local,
-            vulkan.graphic.family,
-            "materialbuffer".to_owned(),
-        );
-
+        // BUFFER CREATIONS
         util::begin_cmd(&vulkan.device, vulkan.cmds[0]);
-        vulkan
-            .resources
-            .write_to_buffer_local(vulkan.cmds[0], &vertex_buffer, util::slice_as_u8(&objects));
+        let vertex_buffer = buffer_builder
+            .set_size(objects.len() as u64 * size_of::<VertexBlock>() as u64)
+            .set_type(BufferType::Vertex)
+            .set_memory(Memory::Local)
+            .set_queue_family(vulkan.graphic)
+            .set_frames(1)
+            .set_is_descriptor(false)
+            .set_data(util::slice_as_u8(&objects))
+            .set_name("vertex-buffer")
+            .build_resource(&mut vulkan.resources, vulkan.cmds[0])[0];
 
-        vulkan
-            .resources
-            .write_to_buffer_local(vulkan.cmds[0], &material_buffer, &util::slice_as_u8(&mats));
+        let material_buffer = buffer_builder
+            .set_size(mats.len() as u64 * size_of::<GPUTexture>() as u64)
+            .set_type(BufferType::Storage)
+            .set_frames(1)
+            .set_is_descriptor(true)
+            .set_data(util::slice_as_u8(&mats))
+            .set_name("material-buffer")
+            .build_resource(&mut vulkan.resources, vulkan.cmds[0])[0];
+
+        let cam_buffer = buffer_builder
+            .set_size(size_of::<GPUCamera>() as u64)
+            .set_type(BufferType::Uniform)
+            .set_memory(Memory::Host)
+            .set_frames(MAX_FRAMES_IN_FLIGHT as u32)
+            .set_data(&[])
+            .set_name("cam-buffer")
+            .build_resource(&mut vulkan.resources, vulkan.cmds[0]);
+
+        let object_buffer = buffer_builder
+            .set_type(BufferType::Storage)
+            .set_size(objects.len() as u64 * size_of::<GPUBlock>() as u64)
+            .set_data(util::slice_as_u8(&objects))
+            .set_name("object-buffer")
+            .build_resource(&mut vulkan.resources, vulkan.cmds[0]);
+
+        let indice = buffer_builder
+            .set_size(size_of::<GPUIndex>() as u64)
+            .set_type(BufferType::Uniform)
+            .set_memory(Memory::Local)
+            .set_name("object-index")
+            .set_data(&[])
+            .build_resource(&mut vulkan.resources, vulkan.cmds[0]);
+
+        let mut frame_data = vec![];
+
+        let texture_atlas = vulkan.resources.create_texture_array(texture_loaded, "texture_atlas".to_owned());
 
         /*Should be outside of this initilize */
         for i in 0..MAX_FRAMES_IN_FLIGHT {
             let name = format!("{}_{}", "compute_skybox", i);
-            let cam_buffer_n = format!("camera_buffer{}", i);
-            let object_buffer_n = format!("object_buffer{}", i);
-            let indice_buffer_n = format!("indice_buffer{}", i);
+
             let compute_image = vulkan.resources.create_storage_image(
                 vulkan.window_extent,
                 4,
@@ -131,48 +153,25 @@ impl ApplicationTrait for GameApplication {
                 name,
             );
 
-            let cam_buffer = vulkan.resources.create_buffer(
-                size_of::<GPUCamera>() as u64,
-                BufferType::Uniform,
-                Memory::Host,
-                vulkan.graphic.family,
-                cam_buffer_n,
-            );
-
-            let mut object = vulkan.resources.create_buffer(
-                objects.len() as u64 * size_of::<GPUBlock>() as u64,
-                BufferType::Storage,
-                Memory::Host,
-                vulkan.graphic.family,
-                object_buffer_n,
-            );
-
-            let indice = vulkan.resources.create_buffer(
-                size_of::<GPUIndex>() as u64,
-                BufferType::Uniform,
-                Memory::Local,
-                vulkan.graphic.family,
-                indice_buffer_n,
-            );
             let gpu_index = GPUIndex {
-                cam: cam_buffer.index as u32,
-                object: object.index as u32,
+                cam: cam_buffer[i].index as u32,
+                object: object_buffer[i].index as u32,
                 texture: texture_atlas.index as u32,
                 normal: 0,
                 material: material_buffer.index as u32,
             };
-            vulkan.resources.write_to_buffer_host(&mut object, util::slice_as_u8(&objects));
 
             vulkan
                 .resources
-                .write_to_buffer_local(vulkan.cmds[0], &indice, util::slice_as_u8(&vec![gpu_index]));
+                .write_to_buffer_local(vulkan.cmds[0], &indice[i], util::slice_as_u8(&vec![gpu_index]));
 
-            frame_data.push(FrameData { cam_buffer, objects: object, compute_image, indices_buffer: indice });
+            frame_data.push(FrameData { cam_buffer: cam_buffer[i], objects: object_buffer[i], compute_image, indices_buffer: indice[i] });
         }
 
         util::end_cmd_and_submit(&vulkan.device, vulkan.cmds[0], vulkan.graphic, vec![], vec![], vk::Fence::null());
         unsafe { vulkan.device.device_wait_idle().unwrap() };
 
+        // CREATE PIPELINE
         let vertex = util::create_shader(&vulkan.device, "shaders/spv/colored_triangle.vert.spv".to_owned());
         let frag = util::create_shader(&vulkan.device, "shaders/spv/colored_triangle.frag.spv".to_owned());
 
@@ -368,7 +367,7 @@ impl ApplicationTrait for GameApplication {
 
             let diff = now - self.last_frame;
 
-            let hz_diff = Self::HZ_MAX - diff.as_millis() as i64;
+            let hz_diff = HZ_MAX - diff.as_millis() as i64;
 
             if hz_diff > 0 {
                 std::thread::sleep(Duration::from_millis(hz_diff as u64));
@@ -474,8 +473,9 @@ struct FrameData {
 
 extern crate ultraviolet as glm;
 
+pub const HZ_MAX: i64 = (1000.0 / 60.0) as i64;
+
 impl GameApplication {
-    const HZ_MAX: i64 = (1000.0 / 60.0) as i64;
     fn new(event_loop: &EventLoop<()>) -> Self {
         ApplicationTrait::on_new(event_loop)
     }
