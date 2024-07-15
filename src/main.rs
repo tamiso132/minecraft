@@ -18,7 +18,7 @@ use voxelengine::{
     vulkan::{
         builder::{self, ComputePipelineBuilder},
         mesh::VertexBlock,
-        resource::{AllocatedBuffer, AllocatedImage, BufferType, Memory},
+        resource::{self, AllocatedBuffer, AllocatedImage, BufferBuilder, BufferType, Memory},
         util, SkyBoxPushConstant, VulkanContext,
     },
     App::{App, ApplicationTrait},
@@ -29,6 +29,7 @@ use winit::{
     keyboard::KeyCode,
     window::CursorGrabMode,
 };
+mod test;
 mod test;
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
@@ -65,164 +66,207 @@ struct GameApplication {
     pipeline_index: i32,
 }
 
-// impl ApplicationTrait for GameApplication {
-//     fn on_new(event_loop: &EventLoop<()>) -> Self {
-//         // Builder::new().filter_level(log::LevelFilter::Info).init();
+// // impl ApplicationTrait for GameApplication {
+// //     fn on_new(event_loop: &EventLoop<()>) -> Self {
+// //         // Builder::new().filter_level(log::LevelFilter::Info).init();
 
-//         // let mut vulkan = VulkanContext::new(&event_loop, MAX_FRAMES_IN_FLIGHT, true);
+// //         // let mut vulkan = VulkanContext::new(&event_loop, MAX_FRAMES_IN_FLIGHT, true);
 
-//         // let comp_skybox = util::create_shader(&vulkan.device, "shaders/spv/skybox.comp.spv".to_owned());
-//         // let compute = ComputePipelineBuilder::new(comp_skybox).build(&vulkan.device, vulkan.pipeline_layout);
-//         // let mesh = VertexBlock::get_mesh();
+// //         // let comp_skybox = util::create_shader(&vulkan.device, "shaders/spv/skybox.comp.spv".to_owned());
+// //         // let compute = ComputePipelineBuilder::new(comp_skybox).build(&vulkan.device, vulkan.pipeline_layout);
+// //         // let mesh = VertexBlock::get_mesh();
 
-//         // let cam = Camera::new(vulkan.window_extent);
-//         // let world = World::new(cam.get_pos(), 4);
+// //         // let cam = Camera::new(vulkan.window_extent);
+// //         // let world = World::new(cam.get_pos(), 4);
 
-//         // //let objects = world.get_culled();
-//         // let objects = vec![];
-//         // todo!();
-//         // let vertex_buffer = vulkan.resources.create_buffer_non_descriptor(
-//         //     objects.len() as u64 * size_of::<VertexBlock>() as u64,
-//         //     BufferType::Vertex,
-//         //     Memory::Local,
-//         //     vulkan.graphic.family,
-//         //     "vertexBuffer".to_owned(),
-//         // );
+//         //let objects = world.get_culled();
+//         let objects = vec![];
+//         todo!();
 
-//         // let mut frame_data = vec![];
-//         // //let objects = AreaGenerator::generate_around((0, 0));
+//         // RESOURCES
+//         let mut buffer_builder = BufferBuilder::new();
+//         let mats = Materials::get_all();
 
-//         // let texture_loaded = util::load_texture_array("texture_atlas_0.png", 64);
+// //         // let texture_loaded = util::load_texture_array("texture_atlas_0.png", 64);
 
-//         // let texture_atlas = vulkan.resources.create_texture_array(texture_loaded, "texture_atlas".to_owned());
+//         // BUFFER CREATIONS
+//         util::begin_cmd(&vulkan.device, vulkan.cmds[0]);
+//         let vertex_buffer = buffer_builder
+//             .set_size(objects.len() as u64 * size_of::<VertexBlock>() as u64)
+//             .set_type(BufferType::Vertex)
+//             .set_memory(Memory::Local)
+//             .set_queue_family(vulkan.graphic)
+//             .set_frames(1)
+//             .set_is_descriptor(false)
+//             .set_data(util::slice_as_u8(&objects))
+//             .set_name("vertex-buffer")
+//             .build_resource(&mut vulkan.resources, vulkan.cmds[0])[0];
 
-//         // let mats = Materials::get_all();
-//         // let material_buffer = vulkan.resources.create_buffer(
-//         //     mats.len() as u64 * size_of::<GPUTexture>() as u64,
-//         //     BufferType::Storage,
-//         //     Memory::Local,
-//         //     vulkan.graphic.family,
-//         //     "materialbuffer".to_owned(),
-//         // );
+//         let material_buffer = buffer_builder
+//             .set_size(mats.len() as u64 * size_of::<GPUTexture>() as u64)
+//             .set_type(BufferType::Storage)
+//             .set_frames(1)
+//             .set_is_descriptor(true)
+//             .set_data(util::slice_as_u8(&mats))
+//             .set_name("material-buffer")
+//             .build_resource(&mut vulkan.resources, vulkan.cmds[0])[0];
 
-//         // util::begin_cmd(&vulkan.device, vulkan.cmds[0]);
-//         // vulkan
-//         //     .resources
-//         //     .write_to_buffer_local(vulkan.cmds[0], &vertex_buffer, util::slice_as_u8(&objects));
+//         let cam_buffer = buffer_builder
+//             .set_size(size_of::<GPUCamera>() as u64)
+//             .set_type(BufferType::Uniform)
+//             .set_memory(Memory::Host)
+//             .set_frames(MAX_FRAMES_IN_FLIGHT as u32)
+//             .set_data(&[])
+//             .set_name("cam-buffer")
+//             .build_resource(&mut vulkan.resources, vulkan.cmds[0]);
 
-//         // vulkan
-//         //     .resources
-//         //     .write_to_buffer_local(vulkan.cmds[0], &material_buffer, &util::slice_as_u8(&mats));
+//         let object_buffer = buffer_builder
+//             .set_type(BufferType::Storage)
+//             .set_size(objects.len() as u64 * size_of::<GPUBlock>() as u64)
+//             .set_data(util::slice_as_u8(&objects))
+//             .set_name("object-buffer")
+//             .build_resource(&mut vulkan.resources, vulkan.cmds[0]);
 
-//         // /*Should be outside of this initilize */
-//         // for i in 0..MAX_FRAMES_IN_FLIGHT {
-//         //     let name = format!("{}_{}", "compute_skybox", i);
-//         //     let cam_buffer_n = format!("camera_buffer{}", i);
-//         //     let object_buffer_n = format!("object_buffer{}", i);
-//         //     let indice_buffer_n = format!("indice_buffer{}", i);
-//         //     let compute_image = vulkan.resources.create_storage_image(
-//         //         vulkan.window_extent,
-//         //         4,
-//         //         vk::MemoryPropertyFlags::DEVICE_LOCAL,
-//         //         vk::Format::R8G8B8A8_UNORM,
-//         //         vk::ImageUsageFlags::TRANSFER_SRC
-//         //             | vk::ImageUsageFlags::TRANSFER_DST
-//         //             | vk::ImageUsageFlags::STORAGE
-//         //             | vk::ImageUsageFlags::COLOR_ATTACHMENT,
-//         //         name,
-//         //     );
+//         let indice = buffer_builder
+//             .set_size(size_of::<GPUIndex>() as u64)
+//             .set_type(BufferType::Uniform)
+//             .set_memory(Memory::Local)
+//             .set_name("object-index")
+//             .set_data(&[])
+//             .build_resource(&mut vulkan.resources, vulkan.cmds[0]);
 
-//         //     let cam_buffer = vulkan.resources.create_buffer(
-//         //         size_of::<GPUCamera>() as u64,
-//         //         BufferType::Uniform,
-//         //         Memory::Host,
-//         //         vulkan.graphic.family,
-//         //         cam_buffer_n,
-//         //     );
+//         let mut frame_data = vec![];
 
-//         //     let mut object = vulkan.resources.create_buffer(
-//         //         objects.len() as u64 * size_of::<GPUBlock>() as u64,
-//         //         BufferType::Storage,
-//         //         Memory::Host,
-//         //         vulkan.graphic.family,
-//         //         object_buffer_n,
-//         //     );
+// //         // let texture_atlas = vulkan.resources.create_texture_array(texture_loaded, "texture_atlas".to_owned());
 
-//         //     let indice = vulkan.resources.create_buffer(
-//         //         size_of::<GPUIndex>() as u64,
-//         //         BufferType::Uniform,
-//         //         Memory::Local,
-//         //         vulkan.graphic.family,
-//         //         indice_buffer_n,
-//         //     );
-//         //     let gpu_index = GPUIndex {
-//         //         cam: cam_buffer.index as u32,
-//         //         object: object.index as u32,
-//         //         texture: texture_atlas.index as u32,
-//         //         normal: 0,
-//         //         material: material_buffer.index as u32,
-//         //     };
-//         //     vulkan.resources.write_to_buffer_host(&mut object, util::slice_as_u8(&objects));
+//         let mats = Materials::get_all();
+//         let material_buffer = vulkan.resources.create_buffer(
+//             mats.len() as u64 * size_of::<GPUTexture>() as u64,
+//             BufferType::Storage,
+//             Memory::Local,
+//             vulkan.graphic.family,
+//             "materialbuffer".to_owned(),
+//         );
 
-//         //     vulkan
-//         //         .resources
-//         //         .write_to_buffer_local(vulkan.cmds[0], &indice, util::slice_as_u8(&vec![gpu_index]));
+//         util::begin_cmd(&vulkan.device, vulkan.cmds[0]);
+//         vulkan
+//             .resources
+//             .write_to_buffer_local(vulkan.cmds[0], &vertex_buffer, util::slice_as_u8(&objects));
 
-//         //     frame_data.push(FrameData { cam_buffer, objects: object, compute_image, indices_buffer: indice });
-//         // }
+//         vulkan
+//             .resources
+//             .write_to_buffer_local(vulkan.cmds[0], &material_buffer, &util::slice_as_u8(&mats));
 
-//         // util::end_cmd_and_submit(&vulkan.device, vulkan.cmds[0], vulkan.graphic, vec![], vec![], vk::Fence::null());
-//         // unsafe { vulkan.device.device_wait_idle().unwrap() };
+//         /*Should be outside of this initilize */
+//         for i in 0..MAX_FRAMES_IN_FLIGHT {
+//             let name = format!("{}_{}", "compute_skybox", i);
+//             let cam_buffer_n = format!("camera_buffer{}", i);
+//             let object_buffer_n = format!("object_buffer{}", i);
+//             let indice_buffer_n = format!("indice_buffer{}", i);
+//             let compute_image = vulkan.resources.create_storage_image(
+//                 vulkan.window_extent,
+//                 4,
+//                 vk::MemoryPropertyFlags::DEVICE_LOCAL,
+//                 vk::Format::R8G8B8A8_UNORM,
+//                 vk::ImageUsageFlags::TRANSFER_SRC
+//                     | vk::ImageUsageFlags::TRANSFER_DST
+//                     | vk::ImageUsageFlags::STORAGE
+//                     | vk::ImageUsageFlags::COLOR_ATTACHMENT,
+//                 name,
+//             );
 
-//         // let vertex = util::create_shader(&vulkan.device, "shaders/spv/colored_triangle.vert.spv".to_owned());
-//         // let frag = util::create_shader(&vulkan.device, "shaders/spv/colored_triangle.frag.spv".to_owned());
+//             let cam_buffer = vulkan.resources.create_buffer(
+//                 size_of::<GPUCamera>() as u64,
+//                 BufferType::Uniform,
+//                 Memory::Host,
+//                 vulkan.graphic.family,
+//                 cam_buffer_n,
+//             );
 
-//         // let pipelines = builder::PipelineBuilder::new()
-//         //     .add_layout(vulkan.pipeline_layout)
-//         //     .add_color_format(vulkan.get_swapchain_format())
-//         //     .add_depth(vulkan.get_depth_format(), true, true, vk::CompareOp::LESS_OR_EQUAL)
-//         //     .cull_mode(vk::CullModeFlags::BACK, vk::FrontFace::CLOCKWISE)
-//         //     .add_topology(vk::PrimitiveTopology::TRIANGLE_LIST)
-//         //     .add_wire()
-//         //     .build::<VertexBlock>(&vulkan.device, vertex, frag);
+//             let mut object = vulkan.resources.create_buffer(
+//                 objects.len() as u64 * size_of::<GPUBlock>() as u64,
+//                 BufferType::Storage,
+//                 Memory::Host,
+//                 vulkan.graphic.family,
+//                 object_buffer_n,
+//             );
 
-//         // vulkan.window.set_cursor_grab(CursorGrabMode::None).unwrap();
-//         // vulkan.window.set_cursor_visible(true);
-//         // vulkan.window.focus_window();
+//             let indice = vulkan.resources.create_buffer(
+//                 size_of::<GPUIndex>() as u64,
+//                 BufferType::Uniform,
+//                 Memory::Local,
+//                 vulkan.graphic.family,
+//                 indice_buffer_n,
+//             );
+//             let gpu_index = GPUIndex {
+//                 cam: cam_buffer.index as u32,
+//                 object: object.index as u32,
+//                 texture: texture_atlas.index as u32,
+//                 normal: 0,
+//                 material: material_buffer.index as u32,
+//             };
+//             vulkan.resources.write_to_buffer_host(&mut object, util::slice_as_u8(&objects));
 
-//         // vulkan.resources.set_frame(0);
+// //         //     vulkan
+// //         //         .resources
+// //         //         .write_to_buffer_local(vulkan.cmds[0], &indice[i], util::slice_as_u8(&vec![gpu_index]));
 
-//         // Self {
-//         //     cam,
-//         //     vulkan,
-//         //     compute,
-//         //     push_constant: SkyBoxPushConstant::new(),
-//         //     last_frame: Instant::now(),
-//         //     pipeline: pipelines,
-//         //     vertex_buffer,
-//         //     controls: Controls::new(),
-//         //     frame_data,
-//         //     focus: false,
-//         //     object_count: objects.len() as u32,
-//         //     resize: false,
-//         //     texture_atlas,
-//         //     material_buffer,
-//         //     world,
-//         //     objects,
-//         //     is_frustum: false,
-//         //     culled: vec![],
-//         //     pipeline_index: 0,
-//         //     vertex_block: vec![],
-//         // }
-//     }
+// //         //     frame_data.push(FrameData { cam_buffer: cam_buffer[i], objects: object_buffer[i], compute_image, indices_buffer: indice[i] });
+// //         // }
 
-//     fn resize_event(&mut self) {
-//         self.resize = true;
-//     }
+// //         // util::end_cmd_and_submit(&vulkan.device, vulkan.cmds[0], vulkan.graphic, vec![], vec![], vk::Fence::null());
+// //         // unsafe { vulkan.device.device_wait_idle().unwrap() };
 
-//     fn on_draw(&mut self) {
-//         unsafe {
-//             self.vulkan.prepare_frame(&mut self.resize);
+//         // CREATE PIPELINE
+//         let vertex = util::create_shader(&vulkan.device, "shaders/spv/colored_triangle.vert.spv".to_owned());
+//         let frag = util::create_shader(&vulkan.device, "shaders/spv/colored_triangle.frag.spv".to_owned());
+
+// //         // let pipelines = builder::PipelineBuilder::new()
+// //         //     .add_layout(vulkan.pipeline_layout)
+// //         //     .add_color_format(vulkan.get_swapchain_format())
+// //         //     .add_depth(vulkan.get_depth_format(), true, true, vk::CompareOp::LESS_OR_EQUAL)
+// //         //     .cull_mode(vk::CullModeFlags::BACK, vk::FrontFace::CLOCKWISE)
+// //         //     .add_topology(vk::PrimitiveTopology::TRIANGLE_LIST)
+// //         //     .add_wire()
+// //         //     .build::<VertexBlock>(&vulkan.device, vertex, frag);
+
+// //         // vulkan.window.set_cursor_grab(CursorGrabMode::None).unwrap();
+// //         // vulkan.window.set_cursor_visible(true);
+// //         // vulkan.window.focus_window();
+
+// //         // vulkan.resources.set_frame(0);
+
+// //         // Self {
+// //         //     cam,
+// //         //     vulkan,
+// //         //     compute,
+// //         //     push_constant: SkyBoxPushConstant::new(),
+// //         //     last_frame: Instant::now(),
+// //         //     pipeline: pipelines,
+// //         //     vertex_buffer,
+// //         //     controls: Controls::new(),
+// //         //     frame_data,
+// //         //     focus: false,
+// //         //     object_count: objects.len() as u32,
+// //         //     resize: false,
+// //         //     texture_atlas,
+// //         //     material_buffer,
+// //         //     world,
+// //         //     objects,
+// //         //     is_frustum: false,
+// //         //     culled: vec![],
+// //         //     pipeline_index: 0,
+// //         //     vertex_block: vec![],
+// //         // }
+// //     }
+
+// //     fn resize_event(&mut self) {
+// //         self.resize = true;
+// //     }
+
+// //     fn on_draw(&mut self) {
+// //         unsafe {
+// //             self.vulkan.prepare_frame(&mut self.resize);
 
 //             if self.resize == true {
 //                 self.recreate_swapchain();
@@ -369,7 +413,7 @@ struct GameApplication {
 
 //             let diff = now - self.last_frame;
 
-//             let hz_diff = Self::HZ_MAX - diff.as_millis() as i64;
+//  let hz_diff = HZ_MAX - diff.as_millis() as i64;
 
 //             if hz_diff > 0 {
 //                 std::thread::sleep(Duration::from_millis(hz_diff as u64));
@@ -473,13 +517,15 @@ struct GameApplication {
 //     indices_buffer: AllocatedBuffer,
 // }
 
-// extern crate ultraviolet as glm;
+extern crate ultraviolet as glm;
 
-// impl GameApplication {
-//     const HZ_MAX: i64 = (1000.0 / 60.0) as i64;
-//     fn new(event_loop: &EventLoop<()>) -> Self {
-//         ApplicationTrait::on_new(event_loop)
-//     }
+pub const HZ_MAX: i64 = (1000.0 / 60.0) as i64;
+
+impl GameApplication {}
+const HZ_MAX: i64 = (1000.0 / 60.0) as i64;
+// fn new(event_loop: &EventLoop<()>) -> Self {
+//     ApplicationTrait::on_new(event_loop)
+// }
 
 //     // need to rebuild the swapchain and any resources that depend on the window extent
 //     fn recreate_swapchain(&mut self) {
