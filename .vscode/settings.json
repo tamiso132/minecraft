@@ -1,0 +1,17 @@
+{
+    "[rust]": {
+        "editor.semanticHighlighting.enabled": false
+    },
+    "editor.tokenColorCustomizations": {
+        "[Visual Studio Dark - C++]": {
+            "textMateRules": [
+                {
+                    "scope": "comment.block",
+                    "settings": {
+                        "foreground": "#ffA500",
+                    }
+                }
+            ],
+        }
+    },
+}
