@@ -10,6 +10,7 @@ use ash::vk::{self};
 use env_logger::Builder;
 use test::TestApplication;
 use voxelengine::{
+    app::{App, ApplicationTrait},
     core::camera::{Camera, Controls, Frustum, GPUCamera},
     terrain::{
         block::{GPUBlock, GPUTexture, Materials},
@@ -21,7 +22,6 @@ use voxelengine::{
         resource::{self, AllocatedBuffer, AllocatedImage, BufferBuilder, BufferType, Memory},
         util, SkyBoxPushConstant, VulkanContext,
     },
-    App::{App, ApplicationTrait},
 };
 use winit::{
     event::{self, ElementState, Event, RawKeyEvent, WindowEvent},
@@ -29,42 +29,42 @@ use winit::{
     keyboard::KeyCode,
     window::CursorGrabMode,
 };
-mod test;
+use world_test::Octree;
 mod test;
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
 /// There should only be application relevant information in these functions
-struct GameApplication {
-    vulkan: VulkanContext,
-    compute: vk::Pipeline,
+// struct GameApplication {
+//     vulkan: VulkanContext,
+//     compute: vk::Pipeline,
 
-    push_constant: SkyBoxPushConstant,
-    last_frame: Instant,
+//     push_constant: SkyBoxPushConstant,
+//     last_frame: Instant,
 
-    pipeline: Vec<vk::Pipeline>,
-    vertex_buffer: AllocatedBuffer,
+//     pipeline: Vec<vk::Pipeline>,
+//     vertex_buffer: AllocatedBuffer,
 
-    cam: Camera,
-    controls: Controls,
-    frame_data: Vec<FrameData>,
+//     cam: Camera,
+//     controls: Controls,
+//     frame_data: Vec<FrameData>,
 
-    focus: bool,
+//     focus: bool,
 
-    object_count: u32,
-    objects: Vec<GPUBlock>,
-    resize: bool,
+//     object_count: u32,
+//     objects: Vec<GPUBlock>,
+//     resize: bool,
 
-    texture_atlas: AllocatedImage,
-    material_buffer: AllocatedBuffer,
+//     texture_atlas: AllocatedImage,
+//     material_buffer: AllocatedBuffer,
 
-    world: World,
-    is_frustum: bool,
+//     world: World,
+//     is_frustum: bool,
 
-    vertex_block: Vec<VertexBlock>,
+//     vertex_block: Vec<VertexBlock>,
 
-    culled: Vec<GPUBlock>,
-    pipeline_index: i32,
-}
+//     culled: Vec<GPUBlock>,
+//     pipeline_index: i32,
+// }
 
 // // impl ApplicationTrait for GameApplication {
 // //     fn on_new(event_loop: &EventLoop<()>) -> Self {
@@ -516,13 +516,12 @@ struct GameApplication {
 //     /// Uniform buffer that has all indices
 //     indices_buffer: AllocatedBuffer,
 // }
-
 extern crate ultraviolet as glm;
 
-pub const HZ_MAX: i64 = (1000.0 / 60.0) as i64;
+// pub const HZ_MAX: i64 = (1000.0 / 60.0) as i64;
 
-impl GameApplication {}
-const HZ_MAX: i64 = (1000.0 / 60.0) as i64;
+// impl GameApplication {}
+// const HZ_MAX: i64 = (1000.0 / 60.0) as i64;
 // fn new(event_loop: &EventLoop<()>) -> Self {
 //     ApplicationTrait::on_new(event_loop)
 // }
@@ -548,11 +547,13 @@ const HZ_MAX: i64 = (1000.0 / 60.0) as i64;
 //     }
 // }
 
-// fn main() {
-//     let event_loop = EventLoop::new().unwrap();
-//     event_loop.set_control_flow(event_loop::ControlFlow::Poll);
+mod world_test;
+fn main() {
+    // let event_loop = EventLoop::new().unwrap();
+    // event_loop.set_control_flow(event_loop::ControlFlow::Poll);
 
-//     let mut application: App<TestApplication> = App::new(&event_loop);
+    // let mut application: App<TestApplication> = App::new(&event_loop);
 
-//     application.run(event_loop);
-// }
+    // application.run(event_loop);
+    Octree::new();
+}

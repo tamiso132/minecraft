@@ -9,6 +9,7 @@ use std::{
 use ash::vk::{self};
 use env_logger::Builder;
 use voxelengine::{
+    app::{App, ApplicationTrait},
     core::camera::{Camera, Controls, Frustum, GPUCamera},
     terrain::{
         block::{GPUBlock, GPUTexture, Materials},
@@ -17,10 +18,9 @@ use voxelengine::{
     vulkan::{
         builder::{self, ComputePipelineBuilder},
         mesh::{Vertex, VertexBlock},
-        resource::{AllocatedBuffer, AllocatedImage, BufferBuilder, BufferType, Memory},
+        resource::{AllocatedBuffer, AllocatedImage, BufferBuilder, BufferIndex, BufferType, Memory},
         util, SkyBoxPushConstant, VulkanContext,
     },
-    App::{App, ApplicationTrait},
 };
 use winit::{
     event::{self, ElementState, Event, RawKeyEvent, WindowEvent},
@@ -110,7 +110,7 @@ pub struct TestApplication {
     last_frame: Instant,
 
     pipeline: Vec<vk::Pipeline>,
-    vertex_buffer: AllocatedBuffer,
+    vertex_buffer: Vec<BufferIndex>,
 
     cam: Camera,
     controls: Controls,
@@ -149,7 +149,7 @@ impl ApplicationTrait for TestApplication {
         util::begin_cmd(&vulkan.device, vulkan.cmds[0]);
 
         /*Create Vulkan Buffers*/
-
+        let res = vulkan.resources.get_buffer_storage();
         let vertex_buffer = buffer_builder
             .set_name("vertex-buffer")
             .set_is_descriptor(false)
@@ -159,7 +159,7 @@ impl ApplicationTrait for TestApplication {
             .set_frames(1)
             .set_queue_family(vulkan.graphic)
             .set_data(util::slice_as_u8(&objects))
-            .build_resource(&mut vulkan.resources, cmd)[0];
+            .build_resource(res, cmd);
 
         let cam_buffers = buffer_builder
             .set_frames(MAX_FRAMES_IN_FLIGHT as u32)
@@ -169,20 +169,14 @@ impl ApplicationTrait for TestApplication {
             .set_is_descriptor(true)
             .set_name("camera-buffer")
             .set_data(&[])
-            .build_resource(&mut vulkan.resources, cmd);
+            .build_resource(res, cmd);
 
         let object_buffers = buffer_builder
             .set_size(objects.len() as u64 * size_of::<GPUBlock>() as u64)
             .set_type(BufferType::Storage)
             .set_name("object-buffer")
             .set_data(util::slice_as_u8(&objects))
-            .build_resource(&mut vulkan.resources, cmd);
-
-        //let objects = AreaGenerator::generate_around((0, 0));
-
-        vulkan
-            .resources
-            .write_to_buffer_local(vulkan.cmds[0], &vertex_buffer, util::slice_as_u8(&objects));
+            .build_resource(res, cmd);
 
         util::end_cmd_and_submit(&vulkan.device, vulkan.cmds[0], vulkan.graphic, vec![], vec![], vk::Fence::null());
         unsafe { vulkan.device.device_wait_idle().unwrap() };
@@ -243,73 +237,73 @@ impl ApplicationTrait for TestApplication {
             let swapchain_index = self.vulkan.swapchain.image_index;
             let cmd = self.vulkan.cmds[frame_index];
 
-            let data = &mut self.frame_data[frame_index];
+            // let data = &mut self.frame_data[frame_index];
 
-            device.cmd_bind_descriptor_sets(
-                cmd,
-                vk::PipelineBindPoint::COMPUTE,
-                self.vulkan.pipeline_layout,
-                0,
-                &[self.vulkan.resources.set],
-                &vec![],
-            );
-
-            util::transition_image_color(&device, cmd, self.vulkan.swapchain.images[swapchain_index as usize].image);
-
-            let gpu_cam = vec![self.cam.get_gpu_camera()];
-
-            self.vulkan
-                .resources
-                .write_to_buffer_host(&mut data.cam_buffer, util::slice_as_u8(&gpu_cam));
-
-            self.vulkan.begin_rendering(vk::AttachmentLoadOp::LOAD);
-
-            let pipeline = self.pipeline[self.pipeline_index as usize];
-
-            device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, pipeline);
-
-            device.cmd_bind_vertex_buffers(cmd, 0, &[self.vertex_buffer.buffer], &vec![0]);
-
-            device.cmd_bind_descriptor_sets(
-                cmd,
-                vk::PipelineBindPoint::GRAPHICS,
-                self.vulkan.pipeline_layout,
-                0,
-                &vec![self.vulkan.resources.set],
-                &vec![],
-            );
-
-            let push_constant = PushConstant {
-                cam_index: self.frame_data[frame_index].cam_buffer.index as u32,
-                object_index: self.frame_data[frame_index].objects.index as u32,
-            };
-
-            device.cmd_push_constants(
-                cmd,
-                self.vulkan.pipeline_layout,
-                vk::ShaderStageFlags::COMPUTE | vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::VERTEX,
-                0,
-                std::slice::from_raw_parts(&push_constant as *const _ as *const u8, std::mem::size_of::<PushConstant>()),
-            );
-
-            device.cmd_draw(cmd, self.vertex_block.len() as u32, 4, 0, 0);
-
-            self.vulkan.end_rendering();
-
-            // let imgui = self.vulkan.imgui.as_mut().unwrap();
-
-            // let ui = imgui.get_draw_instance(&self.vulkan.window);
-
-            // let set = self.vulkan.resources.set;
-
-            // imgui.render(
-            //     self.vulkan.window_extent,
-            //     &self.vulkan.swapchain.images[self.vulkan.swapchain.image_index as usize],
-            //     self.vulkan.current_frame,
-            //     &mut self.vulkan.resources,
+            // device.cmd_bind_descriptor_sets(
             //     cmd,
-            //     set,
+            //     vk::PipelineBindPoint::COMPUTE,
+            //     self.vulkan.pipeline_layout,
+            //     0,
+            //     &[self.vulkan.resources.set],
+            //     &vec![],
             // );
+
+            // util::transition_image_color(&device, cmd, self.vulkan.swapchain.images[swapchain_index as usize].image);
+
+            // let gpu_cam = vec![self.cam.get_gpu_camera()];
+
+            // self.vulkan
+            //     .resources
+            //     .write_to_buffer_host(&mut data.cam_buffer, util::slice_as_u8(&gpu_cam));
+
+            // self.vulkan.begin_rendering(vk::AttachmentLoadOp::LOAD);
+
+            // let pipeline = self.pipeline[self.pipeline_index as usize];
+
+            // device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, pipeline);
+
+            // device.cmd_bind_vertex_buffers(cmd, 0, &[self.vertex_buffer.buffer], &vec![0]);
+
+            // device.cmd_bind_descriptor_sets(
+            //     cmd,
+            //     vk::PipelineBindPoint::GRAPHICS,
+            //     self.vulkan.pipeline_layout,
+            //     0,
+            //     &vec![self.vulkan.resources.set],
+            //     &vec![],
+            // );
+
+            // let push_constant = PushConstant {
+            //     cam_index: self.frame_data[frame_index].cam_buffer.index as u32,
+            //     object_index: self.frame_data[frame_index].objects.index as u32,
+            // };
+
+            // device.cmd_push_constants(
+            //     cmd,
+            //     self.vulkan.pipeline_layout,
+            //     vk::ShaderStageFlags::COMPUTE | vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::VERTEX,
+            //     0,
+            //     std::slice::from_raw_parts(&push_constant as *const _ as *const u8, std::mem::size_of::<PushConstant>()),
+            // );
+
+            // device.cmd_draw(cmd, self.vertex_block.len() as u32, 4, 0, 0);
+
+            // self.vulkan.end_rendering();
+
+            // // let imgui = self.vulkan.imgui.as_mut().unwrap();
+
+            // // let ui = imgui.get_draw_instance(&self.vulkan.window);
+
+            // // let set = self.vulkan.resources.set;
+
+            // // imgui.render(
+            // //     self.vulkan.window_extent,
+            // //     &self.vulkan.swapchain.images[self.vulkan.swapchain.image_index as usize],
+            // //     self.vulkan.current_frame,
+            // //     &mut self.vulkan.resources,
+            // //     cmd,
+            // //     set,
+            // // );
 
             if self.vulkan.end_frame_and_submit() {
                 self.resize = true;
@@ -363,21 +357,21 @@ impl ApplicationTrait for TestApplication {
         unsafe {
             self.vulkan.device.device_wait_idle().unwrap();
 
-            for i in 0..self.frame_data.len() {
-                let frame = &mut self.frame_data[i];
-                self.vulkan.allocator.destroy_buffer(frame.cam_buffer.buffer, &mut frame.cam_buffer.alloc);
-                self.vulkan.allocator.destroy_buffer(frame.objects.buffer, &mut frame.objects.alloc);
-            }
+            // for i in 0..self.frame_data.len() {
+            //     let frame = &mut self.frame_data[i];
+            //     self.vulkan.allocator.destroy_buffer(frame.cam_buffer.buffer, &mut frame.cam_buffer.alloc);
+            //     self.vulkan.allocator.destroy_buffer(frame.objects.buffer, &mut frame.objects.alloc);
+            // }
 
-            for pipeline in self.pipeline.clone() {
-                self.vulkan.device.destroy_pipeline(pipeline, None);
-            }
+            // for pipeline in self.pipeline.clone() {
+            //     self.vulkan.device.destroy_pipeline(pipeline, None);
+            // }
 
-            self.pipeline.clear();
+            // self.pipeline.clear();
 
-            self.vulkan
-                .allocator
-                .destroy_buffer(self.vertex_buffer.buffer, &mut self.vertex_buffer.alloc);
+            // self.vulkan
+            //     .allocator
+            //     .destroy_buffer(self.vertex_buffer.buffer, &mut self.vertex_buffer.alloc);
         }
         self.vulkan.destroy();
     }
