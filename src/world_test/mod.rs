@@ -9,28 +9,25 @@ fn calculate_lod_step(distance: f32) -> usize {
 }
 #[derive(Default, Clone, Copy)]
 struct Color {
-    r: u8,
-    g: u8,
-    b: u8,
-    a: u8,
+    pub rgba: [u8; 4],
 }
 impl Color {
     fn black() -> Self {
-        Self { r: 0, g: 0, b: 0, a: 255 }
+        Self { rgba: [0, 0, 0, 255] }
     }
 
     fn white() -> Self {
-        Self { r: 255, g: 255, b: 255, a: 255 }
+        Self { rgba: [255, 255, 255, 255] }
     }
 }
 
 struct MatArray {
-    pub mats: [Color; CHUNK_RESOLUTION * CHUNK_RESOLUTION * CHUNK_RESOLUTION],
+    pub mats: Vec<Color>,
 }
 
 impl MatArray {
-    fn new() -> MatArray {
-        let mut mats = [Color::default(); CHUNK_RESOLUTION * CHUNK_RESOLUTION * CHUNK_RESOLUTION];
+    fn new(size: usize) -> MatArray {
+        let mut mats = [Color::default(); usize];
         let colors = [Color::black(), Color::white()];
 
         for y in 0..CHUNK_RESOLUTION {
@@ -46,7 +43,7 @@ impl MatArray {
                 }
             }
         }
-        Self { mats }
+        Self { mats: mats.to_vec() }
     }
 
     fn get_texture_id(x: usize, y: usize, z: usize) -> TextureID {
@@ -56,52 +53,76 @@ impl MatArray {
 
 struct Chunk {
     mats: MatArray,
+    size: usize,
     buffer: BufferIndex,
 }
 const CHECK: usize = size_of::<Chunk>();
 impl Chunk {
     fn new(lod: usize) -> Self {
-        let mats = MatArray::new();
+        let mats = MatArray::new(CHUNK_RESOLUTION * CHUNK_RESOLUTION * CHUNK_RESOLUTION);
 
         let mut current_offset = 0;
-
-        for z in 0..CHUNK_RESOLUTION / lod {}
-
-        Self { mats: MatArray::new(), buffer: 0 }
+        todo!();
     }
 
-    fn average_2x2(lod: usize, start_offset: usize, mats: &[Color; CHUNK_RESOLUTION * CHUNK_RESOLUTION * CHUNK_RESOLUTION]) -> Color {
-        let mut r = 0;
-        let mut g = 0;
-        let mut b = 0;
+    fn generate_lod(lod: usize, start_offset: usize, mats: &[Color; CHUNK_RESOLUTION * CHUNK_RESOLUTION * CHUNK_RESOLUTION]) -> Chunk {
+        let target_size = CHUNK_RESOLUTION >> lod;
+        let scale = 2 * lod;
+        let mut target_chunk = Chunk { mats: MatArray::new(target_size), buffer: 0, size: target_size };
+        for sz in 0..target_size {
+            let z_source_offset = Chunk::get_z_offset(CHUNK_RESOLUTION,sz);
+            let z_target_offset = Chunk::get_z_offset(target_size, sz);
+            for sx in 0..target_size {
+                let x_source_offset = Chunk::get_x_offset(sx);
+                let mut color_sum = [0u32; 4];
+                let mut count = 0;
 
-        let per_voxel = lod * 2;
-        for z in 0..per_voxel {
-            let z_offset = Chunk::get_z_offset(z);
-            for x in 0..per_voxel {
-                let x_offset = Chunk::get_x_offset(x);
+                target_chunk.mats.mats[];
 
-                r += mats[z_offset + start_offset + x_offset].r;
-                g += mats[z_offset + start_offset + x_offset].g;
-                b += mats[z_offset + start_offset + x_offset].b;
+                let target_index = tx + ty * target_size + tz * target_size * target_size;
+                for i in 0..4 {
+                    target_chunk.voxels[target_index].color[i] = (color_sum[i] / count) as u8;
+                }
             }
         }
-        let divide = 2 * 2 * lod;
+        target_chunk
+    }
 
-        Color { r: r / divide, g: g / divide, b: b / divide, a: 255 }
+    fn decompress(mats: &[Color; CHUNK_RESOLUTION * CHUNK_RESOLUTION * CHUNK_RESOLUTION], scale: usize, source_offset: usize) -> Color {
+        let mut color_sum = [0; 3];
+        for z in 0..scale {
+            let z_offset = Chunk::get_z_offset(CHUNK_RESOLUTION, z);
+            for x in 0..scale {
+                let x_offset = Chunk::get_x_offset(x);
+
+                let color = mats[z_offset + x_offset + source_offset].rgba;
+
+                for i in 0..3 {
+                    color_sum[i] += color[i] as u32;
+                }
+            }
+        }
+        let mut out_color = Color::black();
+        let divide = scale * scale;
+        for i in 0..3 {
+            color_sum[i] /= divide as u32;
+            out_color.rgba[i] = color_sum[i] as u8;
+        }
+
+        out_color
     }
 
     fn draw_mesh() {}
 
-    fn get_y_offset(y: usize) -> usize {
-        y * CHUNK_RESOLUTION * CHUNK_RESOLUTION
+    fn get_y_offset(size: usize, y: usize) -> usize {
+        y * size * size
     }
 
-    fn get_z_offset(z: usize) -> usize {
-        z * CHUNK_RESOLUTION
+    fn get_z_offset(size: usize, z: usize) -> usize {
+        z * size
     }
     fn get_x_offset(x: usize) -> usize {
-        x * CHUNK_RESOLUTION * CHUNK_RESOLUTION
+        x
     }
 
     fn get_chunk_render_data(&self) -> BufferIndex {
@@ -149,11 +170,11 @@ impl Node {
         let size = self.size as f32;
 
         let bot_left_pos = self.pos - Vec2::new(size / 2.0, size / 2.0);
-        Chunk::new();
+        Chunk::new(self.depth);
         let chunks = Vec::with_capacity(self.size * self.size);
         for z in 0..self.size {
             for x in 0..self.size {
-                chunks.push(Chunk::new());
+                chunks.push(Chunk::new(self.depth));
             }
         }
     }
