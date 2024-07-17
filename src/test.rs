@@ -8,13 +8,11 @@ use std::{
 
 use ash::vk::{self};
 use env_logger::Builder;
+use glm::Vec3;
 use voxelengine::{
     app::{App, ApplicationTrait},
     core::camera::{Camera, Controls, GPUCamera},
-    terrain::{
-        block::GPUBlock,
-        World,
-    },
+    terrain::{block::GPUBlock, World},
     vulkan::{
         builder::{self},
         mesh::{Vertex, VertexBlock},
@@ -28,6 +26,8 @@ use winit::{
     keyboard::KeyCode,
     window::CursorGrabMode,
 };
+
+use crate::world_test;
 
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
@@ -43,12 +43,7 @@ struct NodeVertex {
 
 impl Vertex for NodeVertex {
     fn get_vertex_attribute_desc() -> Vec<vk::VertexInputAttributeDescription> {
-        [vk::VertexInputAttributeDescription::default()
-            .binding(0)
-            .location(0)
-            .format(vk::Format::R32G32B32_SFLOAT)
-            .offset(0)]
-        .to_vec()
+        [vk::VertexInputAttributeDescription::default().binding(0).location(0).format(vk::Format::R32G32B32_SFLOAT).offset(0)].to_vec()
     }
 }
 
@@ -135,7 +130,7 @@ impl ApplicationTrait for TestApplication {
         Builder::new().filter_level(log::LevelFilter::Info).init();
 
         let mut vulkan = VulkanContext::new(&event_loop, MAX_FRAMES_IN_FLIGHT, true);
-
+        world_test::Octree::new(&mut vulkan.resources.get_buffer_storage(), Vec3::zero());
         let mesh = VertexBlock::get_mesh();
 
         let cam = Camera::new(vulkan.window_extent);
@@ -379,17 +374,6 @@ impl ApplicationTrait for TestApplication {
     fn set_imgui_draw(&mut self, imgui_func: fn(ui: &mut imgui::Ui)) {
         todo!()
     }
-}
-
-#[repr(C, align(16))]
-struct CMainPipeline {
-    index: u32,
-}
-
-struct FrameData {
-    cam_buffer: AllocatedBuffer,
-    objects: AllocatedBuffer,
-    push: PushConstant,
 }
 
 extern crate ultraviolet as glm;

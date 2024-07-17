@@ -16,5 +16,5 @@ fn build_shaders() {
 
 #[cfg(target_os = "windows")]
 fn build_shaders() {
-    Command::new("./build_shader.bat").status().unwrap();
+    Command::new(".\\build_shader.bat").status().unwrap();
 }

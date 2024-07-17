@@ -12,10 +12,7 @@ use test::TestApplication;
 use voxelengine::{
     app::{App, ApplicationTrait},
     core::camera::{Camera, Controls, Frustum, GPUCamera},
-    terrain::{
-        block::{GPUBlock, GPUTexture, Materials},
-        World,
-    },
+    terrain::block::{GPUBlock, GPUTexture, Materials},
     vulkan::{
         builder::{self, ComputePipelineBuilder},
         mesh::VertexBlock,
@@ -29,7 +26,6 @@ use winit::{
     keyboard::KeyCode,
     window::CursorGrabMode,
 };
-use world_test::Octree;
 mod test;
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
@@ -549,11 +545,10 @@ extern crate ultraviolet as glm;
 
 mod world_test;
 fn main() {
-    // let event_loop = EventLoop::new().unwrap();
-    // event_loop.set_control_flow(event_loop::ControlFlow::Poll);
+    let event_loop = EventLoop::new().unwrap();
+    event_loop.set_control_flow(event_loop::ControlFlow::Poll);
 
-    // let mut application: App<TestApplication> = App::new(&event_loop);
+    let mut application: App<TestApplication> = App::new(&event_loop);
 
-    // application.run(event_loop);
-    Octree::new();
+    application.run(event_loop);
 }
