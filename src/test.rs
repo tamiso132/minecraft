@@ -12,7 +12,7 @@ use glm::Vec3;
 use voxelengine::{
     app::{App, ApplicationTrait},
     core::camera::{Camera, Controls, GPUCamera},
-    terrain::{block::GPUBlock, World},
+    terrain::{block::GPUBlock, octree::Octree, World},
     vulkan::{
         builder::{self},
         mesh::{Vertex, VertexBlock},
@@ -130,7 +130,7 @@ impl ApplicationTrait for TestApplication {
         Builder::new().filter_level(log::LevelFilter::Info).init();
 
         let mut vulkan = VulkanContext::new(&event_loop, MAX_FRAMES_IN_FLIGHT, true);
-        world_test::Octree::new(&mut vulkan.resources.get_buffer_storage(), Vec3::zero());
+        //  Octree::new(&mut vulkan.resources.get_buffer_storage(), Vec3::zero());
         let mesh = VertexBlock::get_mesh();
 
         let cam = Camera::new(vulkan.window_extent);
@@ -145,7 +145,7 @@ impl ApplicationTrait for TestApplication {
 
         /*Create Vulkan Buffers*/
         let res = vulkan.resources.get_buffer_storage();
-       
+
         let vertex_buffer = buffer_builder
             .set_name("vertex-buffer")
             .set_is_descriptor(false)

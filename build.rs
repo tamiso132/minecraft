@@ -1,12 +1,5 @@
 // build.rs
-
-use std::{
-    ffi::OsStr,
-    fs,
-    os::unix::ffi::OsStrExt,
-    path::{self, Path},
-    process::Command,
-};
+use std::{ffi::OsStr, fs, path::Path, process::Command};
 
 fn main() {
     // Note that there are a number of downsides to this approach, the comments
@@ -38,7 +31,7 @@ fn read_directory(path: &Path, error: &mut bool) {
             let ext = path.extension().unwrap_or(OsStr::new(""));
             if ext == "frag" || ext == "vert" || ext == "comp" {
                 let full_filename = path.file_name().unwrap();
-                let file_name = &full_filename.as_bytes()[0..get_filename_index_without_ext(full_filename)];
+                let file_name = &full_filename.as_encoded_bytes()[0..get_filename_index_without_ext(full_filename)];
 
                 let output_directory = format!(
                     "{}/{}.{}.{}",
@@ -57,7 +50,7 @@ fn read_directory(path: &Path, error: &mut bool) {
                         }
                     }
                     Err(e) => {
-                        panic!();
+                        panic!("{}", e);
                     }
                 }
             }
@@ -67,8 +60,8 @@ fn read_directory(path: &Path, error: &mut bool) {
 
 fn get_filename_index_without_ext(filename: &OsStr) -> usize {
     let dot_byte = ".".as_bytes()[0];
-    for i in 0..filename.as_bytes().len() {
-        let byte = filename.as_bytes()[i];
+    for i in 0..filename.as_encoded_bytes().len() {
+        let byte = filename.as_encoded_bytes()[i];
         if byte == dot_byte {
             return i as usize;
         }
