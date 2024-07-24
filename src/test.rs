@@ -145,6 +145,7 @@ impl ApplicationTrait for TestApplication {
 
         /*Create Vulkan Buffers*/
         let res = vulkan.resources.get_buffer_storage();
+       
         let vertex_buffer = buffer_builder
             .set_name("vertex-buffer")
             .set_is_descriptor(false)

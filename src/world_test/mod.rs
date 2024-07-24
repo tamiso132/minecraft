@@ -7,29 +7,81 @@ type TextureID = u8;
 fn calculate_lod_step(distance: f32) -> usize {
     1
 }
-#[derive(Default, Clone, Copy, Debug)]
-struct Color {
-    pub rgba: [u8; 4],
+
+struct NoiseParameters {
+    amplitude: f64,
+    seed: u32,
+    scale: [f64; 2],
+    hill_effect: f64,
 }
-impl Color {
-    fn black() -> Self {
-        Self { rgba: [0, 0, 0, 255] }
+impl NoiseParameters {
+    const fn default() -> Self {
+        Self { amplitude: 10.0, seed: 51251351, scale: [0.2, 0.2], hill_effect: 15.0 }
+    }
+}
+
+fn generate_height_map(global_x: i32, global_z: i32, chunk_resolution: usize, parameters: &NoiseParameters) -> Vec<u32> {
+    let x_start = global_x;
+    let z_start = global_z;
+    let chunk_length = CHUNK_RESOLUTION;
+
+    let mut grid = vec![0u32; chunk_length * chunk_length];
+    let amplitude = parameters.amplitude;
+    let seed = parameters.seed;
+    let hill_effect = parameters.hill_effect;
+    let scale = parameters.scale;
+
+    let generator = Source::simplex(seed as u64).add(1.0).scale(scale);
+
+    for z in 0..chunk_length {
+        let z_offset = chunk_length * z;
+        for x in 0..chunk_length {
+            let nx = (x as f64 + x_start as f64) / chunk_length as f64;
+            let nz = (z_offset as f64 + z_start as f64) / chunk_length as f64;
+            grid[(z_offset + x as usize) as usize] = (((generator.sample([nx as f64, nz as f64]) * hill_effect).round() / hill_effect) * amplitude).round() as u32;
+        }
+    }
+    grid
+}
+
+fn generate_chunk(global_x: i32, global_y: i32, global_z: i32, chunk_resolution: usize) -> Chunk {
+    let x_start = global_x;
+    let y_start = global_y;
+    let z_start = global_z;
+    let chunk_length = chunk_resolution;
+
+    let grid = generate_height_map(global_x, global_z, chunk_resolution, &NoiseParameters::default());
+
+    let mut chunk = Chunk::new();
+
+    for z in 0..chunk_length {
+        let z_offset = chunk_resolution * z;
+        for x in 0..chunk_length {
+            let height = grid[x + z_offset] as usize;
+            for y in 0..height {
+                let y_offset = chunk_resolution * chunk_resolution * y;
+                chunk.mats.mats[y_offset + z_offset + x] = 1;
+            }
+        }
     }
 
-    fn white() -> Self {
-        Self { rgba: [255, 255, 255, 255] }
-    }
+    chunk
+}
+
+fn generate_occupancy_grid() {
+    let u: u64 = 0;
+    u.trailing_ones();
 }
 
 #[derive(Debug)]
 struct MatArray {
-    pub mats: Vec<Color>,
+    pub mats: Vec<u8>,
 }
 
 impl MatArray {
     fn new(size: usize) -> MatArray {
-        let mut mats = vec![Color::black(); size * size * size];
-        let colors = [Color::black(), Color::white()];
+        let mut mats = vec![0; size * size * size];
+        let colors = [0, 1];
 
         for y in 0..size {
             let y_offset = Chunk::get_y_offset(size, y as f32);
@@ -71,11 +123,12 @@ impl ChunkMesh {
 
     fn generate_chunks(bot_left: glm::Vec3, lod: usize) -> Vec<Chunk> {
         let chunk_amount = 2usize.pow(lod as u32 - 1);
+        let size = 2usize.pow(lod as u32 - 1) as f32 * CHUNK_RESOLUTION as f32 * VOXEL_SCALE;
         let mut chunks = vec![];
         for y in 0..chunk_amount {
             for z in 0..chunk_amount {
                 for x in 0..chunk_amount {
-                    chunks.push(Chunk::new());
+                    chunks.push(generate_chunk(bot_left.x as i32, (bot_left.y - size) as i32, bot_left.z as i32, CHUNK_RESOLUTION));
                 }
             }
         }
@@ -114,19 +167,19 @@ impl ChunkMesh {
 #[derive(Debug)]
 struct Chunk {
     mats: MatArray,
+    occupancy_grid: Vec<u64>,
 }
 const CHECK: usize = size_of::<Chunk>();
 impl Chunk {
     fn new() -> Self {
         let mats = MatArray::new(CHUNK_RESOLUTION);
 
-        Self { mats }
+        Self { mats, occupancy_grid: todo!() }
     }
 
-    fn generate_lod(lod_chunk: &mut Chunk, lod_chunk_offset: usize, lod: usize, mats: &Vec<Color>) {
+    fn generate_lod(lod_chunk: &mut Chunk, lod_chunk_offset: usize, lod: usize, mats: &Vec<u8>) {
         let target_size = CHUNK_RESOLUTION >> lod;
         let scale = CHUNK_RESOLUTION / target_size;
-
         for y in 0..target_size {
             let y_target_offset = Chunk::get_y_offset(target_size, y as f32);
             for sz in 0..target_size {
@@ -143,30 +196,29 @@ impl Chunk {
         }
     }
 
-    fn decompress(mats: &Vec<Color>, scale: usize, source_offset: usize) -> Color {
-        let mut color_sum = [0; 3];
+    // flexible enough to create other functions to use instead
+    /// Decompresses by getting the biggest count of material
+    fn decompress(mats: &Vec<u8>, scale: usize, source_offset: usize) -> u8 {
+        let mut indices = [0u32; u8::MAX as usize];
+        let mut index = 0;
+
         for y in 0..scale {
             let y_offset = Chunk::get_y_offset(CHUNK_RESOLUTION, y as f32);
             for z in 0..scale {
                 let z_offset = Chunk::get_z_offset(CHUNK_RESOLUTION, z as f32);
                 for x in 0..scale {
                     let x_offset = Chunk::get_x_offset(x);
-                    let color = mats[y_offset + z_offset + x_offset + source_offset].rgba;
+                    let color = mats[y_offset + z_offset + x_offset + source_offset];
 
-                    for i in 0..3 {
-                        color_sum[i] += color[i] as u32;
+                    indices[color as usize] += 1;
+
+                    if indices[index as usize] < indices[color as usize] {
+                        index = color;
                     }
                 }
             }
         }
-        let mut out_color = Color::black();
-        let divide = scale * scale * scale;
-        for i in 0..3 {
-            color_sum[i] /= divide as u32;
-            out_color.rgba[i] = color_sum[i] as u8;
-        }
-
-        out_color
+        index
     }
 
     fn draw_mesh() {}
@@ -192,7 +244,7 @@ use std::{ops::Div, ptr};
 
 use ash::vk;
 use glm::{Vec2, Vec3};
-use libnoise::Scale;
+use libnoise::{Generator, Scale, Source};
 use voxelengine::vulkan::resource::{AllocatedBuffer, BufferIndex, BufferStorage};
 
 // lazily allocate them
