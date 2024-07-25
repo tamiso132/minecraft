@@ -1,7 +1,15 @@
 use super::*;
+use ash::vk::{self, PFN_vkAllocateCommandBuffers, PFN_vkCmdDrawMultiEXT};
 use generation::NoiseParameters;
 use glm::Vec3;
-use voxelengine::vulkan::resource::{AllocatedBuffer, BufferIndex};
+use voxelengine::{
+    terrain::block::GPUBlock,
+    vulkan::{
+        resource::{AllocatedBuffer, BufferBuilder, BufferIndex, BufferStorage, BufferType, Memory},
+        util::slice_as_u8,
+        TKQueue,
+    },
+};
 
 fn generate_chunk(global_x: i32, global_y: i32, global_z: i32, chunk_resolution: usize) -> Chunk {
     let x_start = global_x;
@@ -42,7 +50,7 @@ impl MatArray {
             for z in 0..size {
                 let z_offset = Chunk::get_z_offset(size, z as f32);
 
-                let current = z % 2;
+                let current = 1;
                 for x in 0..size {
                     let x_offset = Chunk::get_x_offset(x);
 
@@ -57,17 +65,52 @@ impl MatArray {
         todo!();
     }
 }
+#[repr(C, align(16))]
+struct ChunkConstant {
+    cam_index: u32,
+    pos: Vec3,
+}
 
-#[derive(Debug)]
 pub struct ChunkMesh {
     chunk: Chunk,
     center: Vec3,
     scale: f32,
-
-    draw_commands: Option<AllocatedBuffer>,
+    quad_len: usize,
+    draw_commands: Option<Vec<BufferIndex>>,
 }
 
 impl ChunkMesh {
+    pub fn new_test(res: &mut BufferStorage, graphic_queue: TKQueue, cmd: vk::CommandBuffer) -> Self {
+        let chunk = Chunk::new();
+
+        let quads = mesh::mesh(&chunk.mats.mats);
+
+        let buffers = BufferBuilder::new()
+            .set_name("ChunkData-1")
+            .set_data(slice_as_u8(&quads))
+            .set_is_descriptor(true)
+            .set_queue_family(graphic_queue)
+            .set_size((quads.len() * size_of::<GPUBlock>()) as u64)
+            .set_memory(Memory::BestFit)
+            .set_type(BufferType::Storage)
+            .build_resource(res, cmd);
+
+        Self { chunk, center: Vec3::zero(), scale: 1.0, draw_commands: Some(buffers), quad_len: quads.len() }
+    }
+
+    pub unsafe fn draw(&self, device: &ash::Device, cmd: vk::CommandBuffer, layout: vk::PipelineLayout, cam_index: u32) {
+        let chunk_constants = [ChunkConstant { pos: self.center, cam_index }];
+        device.cmd_push_constants(
+            cmd,
+            layout,
+            vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+            0,
+            slice_as_u8(&chunk_constants),
+        );
+
+        device.cmd_draw_indexed(cmd, 8, self.quad_len as u32, 0, 0, 0);
+    }
+
     pub fn new(center: Vec3, lod: usize) -> Self {
         let size = 2usize.pow(lod as u32 - 1) as f32 * CHUNK_RESOLUTION as f32 * VOXEL_SCALE;
         let chunks = Self::generate_chunks(center - Vec3::new(size, 0.0, size), lod);
@@ -75,7 +118,7 @@ impl ChunkMesh {
 
         let target_size = CHUNK_RESOLUTION >> lod;
         let scale = target_size as f32 / CHUNK_RESOLUTION as f32;
-        Self { center, scale, chunk, draw_commands: None }
+        Self { center, scale, chunk, draw_commands: None, quad_len: 0 }
     }
 
     fn generate_chunks(bot_left: glm::Vec3, lod: usize) -> Vec<Chunk> {
@@ -114,7 +157,7 @@ impl ChunkMesh {
                     let lod_offset = y_offset + z_offset + x_offset;
                     let chunk_offset = y_chunk_offset + z_chunk_offset + x;
 
-                    Chunk::generate_lod(&mut chunk, lod_offset, lod, &chunks[chunk_offset].mats.mats);
+                    //    Chunk::generate_lod(&mut chunk, lod_offset, lod, &chunks[chunk_offset].mats.mats);
                 }
             }
         }
@@ -125,7 +168,6 @@ impl ChunkMesh {
 struct Chunk {
     mats: MatArray,
 }
-const CHECK: usize = size_of::<Chunk>();
 impl Chunk {
     fn new() -> Self {
         let mats = MatArray::new(CHUNK_RESOLUTION);

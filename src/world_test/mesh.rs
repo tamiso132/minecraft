@@ -1,19 +1,17 @@
 use std::{slice::Windows, thread::yield_now, u8};
 
-use direction::Axis;
+use direction::{Axis, GPUQuad};
 
 use super::*;
 
-const AXIS_COUNT: usize = 6;
-
 const CHUNK_SIZE: usize = size_of::<Gridbits>() * 8;
 
-fn mesh(y_axis: &[Gridbits]) {
+pub fn mesh(y_axis: &[Gridbits]) -> Vec<GPUQuad> {
     let size = size_of::<Gridbits>() * 8;
 
     #[inline]
     fn insert_voxel_to_axis(x: usize, y: usize, z: usize, block: Gridbits, axis_cols: &mut [[Gridbits; CHUNK_SIZE]; CHUNK_SIZE]) {
-        axis_cols[x][y] |= block << z as Gridbits;
+        axis_cols[z][x] |= block << y as Gridbits;
     }
 
     // solid binary for  each axis
@@ -27,7 +25,7 @@ fn mesh(y_axis: &[Gridbits]) {
         for z in 0..CHUNK_SIZE {
             let z_offset = z * CHUNK_SIZE;
             for x in 0..CHUNK_SIZE {
-                insert_voxel_to_axis(z, y, x, y_axis[y_offset + z_offset + x], &mut axis_cols[Axis::Right.get_raw() * 2]);
+                insert_voxel_to_axis(z, x, y, y_axis[y_offset + z_offset + x], &mut axis_cols[Axis::Right.get_raw() * 2]);
             }
         }
     }
@@ -37,7 +35,7 @@ fn mesh(y_axis: &[Gridbits]) {
         for z in 0..CHUNK_SIZE {
             let z_offset = z * CHUNK_SIZE;
             for x in 0..CHUNK_SIZE {
-                insert_voxel_to_axis(z, x, y, y_axis[y_offset + z_offset + x], &mut axis_cols[Axis::Up.get_raw() * 2]);
+                insert_voxel_to_axis(x, y, z, y_axis[y_offset + z_offset + x], &mut axis_cols[Axis::Up.get_raw() * 2]);
             }
         }
     }
@@ -47,7 +45,9 @@ fn mesh(y_axis: &[Gridbits]) {
         for z in 0..CHUNK_SIZE {
             let z_offset = z * CHUNK_SIZE;
             for x in 0..CHUNK_SIZE {
-                insert_voxel_to_axis(x, y, z, y_axis[y_offset + z_offset + x], &mut axis_cols[Axis::Front.get_raw() * 2]);
+                let block = (y_axis[y_offset + z_offset + x] & 1) == 1;
+                assert!(block);
+                insert_voxel_to_axis(x, z, y, y_axis[y_offset + z_offset + x], &mut axis_cols[Axis::Front.get_raw() * 2]);
             }
         }
     }
@@ -55,15 +55,17 @@ fn mesh(y_axis: &[Gridbits]) {
     // CULL FACES
     // ORDER don't matter as long as everything get culled
     for axis in 0..3 {
-        for y in 0..size {
+        for z in 0..size {
             for x in 0..size {
-                let col = axis_cols[axis][y][x];
+                let col = axis_cols[axis * 2][z][x];
 
-                axis_cols[axis][y][x] = col & !(col << 1);
-                axis_cols[axis + 1][y][x] = col & !(col >> 1);
+                axis_cols[axis * 2][z][x] = col & !(col << 1);
+                axis_cols[axis * 2 + 1][z][x] = col & !(col >> 1);
             }
         }
     }
+
+    let mut quads = vec![];
 
     for face in 0..6 {
         let axis = Axis::from(face as u32 / 2);
@@ -72,36 +74,44 @@ fn mesh(y_axis: &[Gridbits]) {
             for x in 0..size {
                 let mut column = axis_cols[face][z][x];
 
-                let mut right_bits = 0;
-                if (x + 1) < size {
-                    right_bits = axis_cols[face][z][x + 1];
-                }
-
                 // TODO, trade places on right and forward
                 while column != 0 {
                     let y = column.trailing_zeros();
-                    column &= column - 1;
+                    column &= !((1 as Gridbits) << y);
+                    axis_cols[face][z][x] &= !((1 as Gridbits) << y);
+
                     let mut right_extend = 1;
 
                     // EXTEND TO RIGHT (in plane)
-                    let mut is_extend = (axis_cols[face][z][x + right_extend] >> y) & 1 == 1;
+                    let mut is_extend;
 
-                    while is_extend {
-                        is_extend = false;
-                        if (x + 1) < size {
-                            is_extend = (axis_cols[face][z][x + right_extend] >> y) & 1 == 1;
-                            // clear the bit we extending to
-                            axis_cols[face][z][x + right_extend] &= !((1 as Gridbits) << y);
+                    loop {
+                        let next_right = right_extend;
+                        // is a block to the right
+                        if (x + next_right) >= size {
+                            break;
                         }
+
+                        is_extend = (axis_cols[face][z][x + next_right] >> y) & 1 == 1;
+                        axis_cols[face][z][x + next_right] &= !((1 as Gridbits) << y);
+
+                        // is a face to the right
+                        if !is_extend {
+                            break;
+                        }
+
                         right_extend += 1;
                     }
-
                     let mut up_extend = 1;
-                    let mut up_bits = &mut axis_cols[face][z + up_extend];
 
                     // EXTEND UP (in plane)
                     loop {
                         let mut extend_up = true;
+                        if (z + up_extend) >= size {
+                            break;
+                        }
+                        let up_bits = &mut axis_cols[face][z + up_extend];
+
                         for right in 0..right_extend {
                             if (up_bits[right] >> y) & 1 == 0 {
                                 extend_up = false;
@@ -115,25 +125,29 @@ fn mesh(y_axis: &[Gridbits]) {
                                 up_bits[right] &= !((1 as Gridbits) << y);
                             }
                             up_extend += 1;
-                            up_bits = &mut axis_cols[face][z + up_extend];
+                            continue;
                         }
 
                         break;
                     }
-
-                    let start_x = x;
-                    let start_up = z;
-
                     let width = right_extend;
                     let height = up_extend;
 
-                    axis.get_position(x as u32, y as u32, z as u32);
+                    let pos = axis.get_position(x as u32, y as u32, z as u32);
 
-                    // TODO, know how to calculate real voxel positons
+                    quads.push(GPUQuad::new(pos.0 as u64, pos.1 as u64, pos.2 as u64, width as u64, height as u64, face as u64));
+                    quads.last().unwrap().println();
+                    let x = 1;
                 }
             }
         }
     }
+    for i in &quads {
+        i.println();
+        println!();
+        println!();
+    }
+    quads
 }
 
 fn cull_hidden_faces(back_axis: &mut Vec<Gridbits>, up_axis: &mut Vec<Gridbits>, right_axis: &mut Vec<Gridbits>) {

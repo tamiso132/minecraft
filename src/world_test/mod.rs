@@ -1,4 +1,4 @@
-mod chunk;
+pub mod chunk;
 mod direction;
 mod generation;
 mod mesh;
