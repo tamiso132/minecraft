@@ -221,7 +221,7 @@ impl ApplicationTrait for TestApplication {
 
             let pipeline = self.pipeline[0];
 
-            // device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, pipeline);
+            device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, pipeline);
 
             // device.cmd_bind_vertex_buffers(cmd, 0, &[self.vertex_buffer.buffer], &vec![0]);
 
