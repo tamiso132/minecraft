@@ -91,7 +91,7 @@ impl ChunkMesh {
             .set_is_descriptor(true)
             .set_queue_family(graphic_queue)
             .set_size((quads.len() * size_of::<GPUBlock>()) as u64)
-            .set_memory(Memory::BestFit)
+            .set_memory(Memory::Local)
             .set_type(BufferType::Storage)
             .build_resource(res, cmd);
 
@@ -103,12 +103,11 @@ impl ChunkMesh {
         device.cmd_push_constants(
             cmd,
             layout,
-            vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+            vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE,
             0,
             slice_as_u8(&chunk_constants),
         );
-
-        device.cmd_draw_indexed(cmd, 8, self.quad_len as u32, 0, 0, 0);
+        device.cmd_draw(cmd, 8, self.quad_len as u32, 0, 0);
     }
 
     pub fn new(center: Vec3, lod: usize) -> Self {

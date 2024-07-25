@@ -2,8 +2,6 @@
 
 #include "../bindless.glsl"
 
-layout(location = 0) in vec4 oColor;
-layout(location = 1) in vec2 oUV;
 
 
 
@@ -16,5 +14,5 @@ layout(push_constant) uniform Matrices {
 
 
 void main() {
-    finalColor = oColor * texture(globalSamples[push_constant.texture_index], oUV);
+    finalColor = vec4(1.0, 1.0, 1.0, 1.0);
 }

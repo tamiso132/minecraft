@@ -15,9 +15,9 @@ fn build_shaders() {
     read_directory(Path::new("shaders"), &mut error);
 
     if error {
-        println!("");
         panic!("shaders are not compiling correctly");
     }
+    println!("cargo:warning=Shaders are compiled");
 }
 
 fn read_directory(path: &Path, error: &mut bool) {

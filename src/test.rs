@@ -7,7 +7,6 @@ use std::{
 
 use ash::vk::{self, FrontFace};
 use env_logger::Builder;
-use glm::Vec3;
 use voxelengine::{
     app::ApplicationTrait,
     core::camera::{Camera, Controls, GPUCamera},
@@ -151,8 +150,8 @@ impl ApplicationTrait for TestApplication {
         unsafe { vulkan.device.device_wait_idle().unwrap() };
 
         /*Create Vulkan Pipeline */
-        let vertex = util::create_shader(&vulkan.device, "shaders/spv/colored_triangle.vert.spv".to_owned());
-        let frag = util::create_shader(&vulkan.device, "shaders/spv/colored_triangle.frag.spv".to_owned());
+        let vertex = util::create_shader(&vulkan.device, "shaders/spv/chunk.vert.spv".to_owned());
+        let frag = util::create_shader(&vulkan.device, "shaders/spv/chunk.frag.spv".to_owned());
 
         let pipelines = builder::PipelineBuilder::new()
             .add_layout(vulkan.pipeline_layout)
