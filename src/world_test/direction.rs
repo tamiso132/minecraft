@@ -20,35 +20,6 @@ impl Axis {
         }
     }
 
-    pub fn get_quad(&self, x: u32, y: u32, z: u32, w: u32, h: u32) -> GPUQuad {
-        match self {
-            Axis::Right => {
-                let b_l = (z, y, x);
-                let b_r = (z, y, x + w);
-
-                let t_l = (z, y + h, x);
-                let t_r = (z, y + h, x + w);
-            }
-
-            Axis::Up => {
-                let b_l = (z, y, x);
-                let b_r = (z, y, x + w);
-
-                let t_l = (z, y + h, x);
-                let t_r = (z, y + h, x + w);
-            }
-
-            Axis::Front => {
-                let b_l = (x, y, z);
-                let b_r = (x + w, y, z);
-
-                let t_l = (x, y + h, z);
-                let t_r = (x + w, y + h, z);
-            }
-        }
-        todo!()
-    }
-
     pub fn get_raw(&self) -> usize {
         (*self).clone() as usize
     }
