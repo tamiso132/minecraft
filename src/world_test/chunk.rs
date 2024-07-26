@@ -50,8 +50,8 @@ impl MatArray {
             for z in 0..size {
                 let z_offset = Chunk::get_z_offset(size, z as f32);
 
-                let current = (z) % 2;
                 for x in 0..size {
+                    let current = x % 2;
                     let x_offset = Chunk::get_x_offset(x);
 
                     mats[y_offset + z_offset + x_offset] = colors[current];

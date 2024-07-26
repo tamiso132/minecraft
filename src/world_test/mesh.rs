@@ -64,7 +64,7 @@ pub fn mesh(y_axis: &[Gridbits]) -> Vec<GPUQuad> {
 
     let mut quads = vec![];
 
-    for face in 0..4 {
+    for face in 0..6 {
         let axis = Axis::from(face as u32 / 2);
         let add = ((face + 1) % 2 == 0) as u32;
         for z in 0..size {
@@ -99,6 +99,7 @@ pub fn mesh(y_axis: &[Gridbits]) -> Vec<GPUQuad> {
                         axis_cols[face][z][x + next_right] &= !((1 as Gridbits) << y);
                         right_extend += 1;
                     }
+                    right_extend += 1;
                     let mut up_extend = 0;
 
                     // EXTEND UP (in plane)
@@ -110,7 +111,7 @@ pub fn mesh(y_axis: &[Gridbits]) -> Vec<GPUQuad> {
                         }
                         let up_bits = &mut axis_cols[face][z + next_up];
 
-                        for right in 0..=right_extend {
+                        for right in 0..right_extend {
                             if (up_bits[right] >> y) & 1 == 0 {
                                 extend_up = false;
                                 break;
@@ -119,7 +120,7 @@ pub fn mesh(y_axis: &[Gridbits]) -> Vec<GPUQuad> {
 
                         if extend_up {
                             // clear all merged up bits
-                            for right in 0..=right_extend {
+                            for right in 0..right_extend {
                                 up_bits[right] &= !((1 as Gridbits) << y);
                             }
                             up_extend += 1;
@@ -129,22 +130,16 @@ pub fn mesh(y_axis: &[Gridbits]) -> Vec<GPUQuad> {
                         break;
                     }
 
-                    let width = right_extend + 1;
+                    let width = right_extend;
                     let height = up_extend + 1;
 
                     let pos = axis.get_position(x as u32, y as u32 + add, z as u32);
 
                     quads.push(GPUQuad::new(pos.0 as u64, pos.1 as u64, pos.2 as u64, width as u64, height as u64, face as u64));
-                    quads.last().unwrap().println();
                     let x = 1;
                 }
             }
         }
-    }
-    for i in &quads {
-        i.println();
-        println!();
-        println!();
     }
     quads
 }

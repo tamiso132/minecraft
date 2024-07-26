@@ -3,11 +3,10 @@
 #include "../bindless.glsl"
 
 
-layout(location = 1) in vec4 position;
+
+layout(location = 1) in flat uint face;
 
 layout(location = 0) out vec4 finalColor;
-
-layout(location = 4) in flat uint face;
 
 
 const vec3 colors[6] = vec3[6](

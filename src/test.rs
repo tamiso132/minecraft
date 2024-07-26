@@ -157,8 +157,9 @@ impl ApplicationTrait for TestApplication {
             .add_layout(vulkan.pipeline_layout)
             .add_color_format(vulkan.get_swapchain_format())
             .add_depth(vulkan.get_depth_format(), true, true, vk::CompareOp::LESS_OR_EQUAL)
-            .cull_mode(vk::CullModeFlags::BACK, FrontFace::CLOCKWISE)
+            .cull_mode(vk::CullModeFlags::NONE, FrontFace::CLOCKWISE)
             .add_topology(vk::PrimitiveTopology::TRIANGLE_LIST)
+            .add_wire()
             .build::<EmptyVertex>(&vulkan.device, vertex, frag);
 
         vulkan.window.set_cursor_grab(CursorGrabMode::None).unwrap();
@@ -218,7 +219,7 @@ impl ApplicationTrait for TestApplication {
 
             self.vulkan.begin_rendering(vk::AttachmentLoadOp::CLEAR);
 
-            let pipeline = self.pipeline[0];
+            let pipeline = self.pipeline[self.pipeline_index as usize];
 
             device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, pipeline);
 
@@ -245,20 +246,23 @@ impl ApplicationTrait for TestApplication {
 
             self.vulkan.end_rendering();
 
-            // // let imgui = self.vulkan.imgui.as_mut().unwrap();
+            let imgui = self.vulkan.imgui.as_mut().unwrap();
 
-            // // let ui = imgui.get_draw_instance(&self.vulkan.window);
+            let ui = imgui.get_draw_instance(&self.vulkan.window);
 
-            // // let set = self.vulkan.resources.set;
+            // ui.slider("pipeline index", 0, 1, &mut self.pipeline_index);
+            let set = self.vulkan.resources.set;
 
-            // // imgui.render(
-            // //     self.vulkan.window_extent,
-            // //     &self.vulkan.swapchain.images[self.vulkan.swapchain.image_index as usize],
-            // //     self.vulkan.current_frame,
-            // //     &mut self.vulkan.resources,
-            // //     cmd,
-            // //     set,
-            // // );
+            ui.slider("pipeline index", 0, 1, &mut self.pipeline_index);
+
+            imgui.render(
+                self.vulkan.window_extent,
+                &self.vulkan.swapchain.images[self.vulkan.swapchain.image_index as usize],
+                self.vulkan.current_frame,
+                &mut self.vulkan.resources.get_buffer_storage(),
+                cmd,
+                set,
+            );
 
             if self.vulkan.end_frame_and_submit() {
                 self.resize = true;
