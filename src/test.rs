@@ -157,7 +157,7 @@ impl ApplicationTrait for TestApplication {
             .add_layout(vulkan.pipeline_layout)
             .add_color_format(vulkan.get_swapchain_format())
             .add_depth(vulkan.get_depth_format(), true, true, vk::CompareOp::LESS_OR_EQUAL)
-            .cull_mode(vk::CullModeFlags::NONE, FrontFace::CLOCKWISE)
+            .cull_mode(vk::CullModeFlags::BACK, FrontFace::CLOCKWISE)
             .add_topology(vk::PrimitiveTopology::TRIANGLE_LIST)
             .build::<EmptyVertex>(&vulkan.device, vertex, frag);
 
@@ -211,7 +211,7 @@ impl ApplicationTrait for TestApplication {
             //     &vec![],
             // );
 
-            // util::transition_image_color(&device, cmd, self.vulkan.swapchain.images[swapchain_index as usize].image);
+            util::transition_image_color(&device, cmd, self.vulkan.swapchain.images[swapchain_index as usize].image);
 
             let gpu_cam = vec![self.cam.get_gpu_camera()];
             self.vulkan.resources.get_buffer_storage().write_to_buffer_host(self.cam_buffers[frame_index], util::slice_as_u8(&gpu_cam));
@@ -235,7 +235,13 @@ impl ApplicationTrait for TestApplication {
 
             let cam_index = self.vulkan.resources.get_buffer_storage().get_buffer_ref(self.cam_buffers[frame_index]).index;
 
-            self.chunk_mesh.draw(&self.vulkan.device, cmd, self.vulkan.pipeline_layout, cam_index as u32);
+            self.chunk_mesh.draw(
+                &self.vulkan.device,
+                self.vulkan.resources.get_buffer_storage(),
+                cmd,
+                self.vulkan.pipeline_layout,
+                cam_index as u32,
+            );
 
             self.vulkan.end_rendering();
 

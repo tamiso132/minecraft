@@ -50,7 +50,7 @@ impl MatArray {
             for z in 0..size {
                 let z_offset = Chunk::get_z_offset(size, z as f32);
 
-                let current = 1;
+                let current = (z) % 2;
                 for x in 0..size {
                     let x_offset = Chunk::get_x_offset(x);
 
@@ -66,9 +66,11 @@ impl MatArray {
     }
 }
 #[repr(C, align(16))]
+#[derive(Default)]
 struct ChunkConstant {
-    cam_index: u32,
     pos: Vec3,
+    cam_index: u32,
+    quad_index: u32,
 }
 
 pub struct ChunkMesh {
@@ -77,6 +79,7 @@ pub struct ChunkMesh {
     scale: f32,
     quad_len: usize,
     draw_commands: Option<Vec<BufferIndex>>,
+    chunk_constant: [ChunkConstant; 1],
 }
 
 impl ChunkMesh {
@@ -94,20 +97,28 @@ impl ChunkMesh {
             .set_memory(Memory::Local)
             .set_type(BufferType::Storage)
             .build_resource(res, cmd);
-
-        Self { chunk, center: Vec3::zero(), scale: 1.0, draw_commands: Some(buffers), quad_len: quads.len() }
+        let chunk_constant = [ChunkConstant { pos: Vec3::zero(), cam_index: 0, quad_index: 0 }];
+        Self {
+            chunk,
+            center: Vec3::zero(),
+            scale: 1.0,
+            draw_commands: Some(buffers),
+            quad_len: quads.len(),
+            chunk_constant: chunk_constant,
+        }
     }
 
-    pub unsafe fn draw(&self, device: &ash::Device, cmd: vk::CommandBuffer, layout: vk::PipelineLayout, cam_index: u32) {
-        let chunk_constants = [ChunkConstant { pos: self.center, cam_index }];
+    pub unsafe fn draw(&self, device: &ash::Device, res: &BufferStorage, cmd: vk::CommandBuffer, layout: vk::PipelineLayout, cam_index: u32) {
+        let shader_index = res.get_buffer_ref(self.draw_commands.as_ref().unwrap().clone()[0]).index;
+
         device.cmd_push_constants(
             cmd,
             layout,
             vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE,
             0,
-            slice_as_u8(&chunk_constants),
+            slice_as_u8(&self.chunk_constant),
         );
-        device.cmd_draw(cmd, 8, self.quad_len as u32, 0, 0);
+        device.cmd_draw(cmd, 6, self.quad_len as u32, 0, 0);
     }
 
     pub fn new(center: Vec3, lod: usize) -> Self {
@@ -117,7 +128,7 @@ impl ChunkMesh {
 
         let target_size = CHUNK_RESOLUTION >> lod;
         let scale = target_size as f32 / CHUNK_RESOLUTION as f32;
-        Self { center, scale, chunk, draw_commands: None, quad_len: 0 }
+        Self { center, scale, chunk, draw_commands: None, quad_len: 0, chunk_constant: [ChunkConstant::default()] }
     }
 
     fn generate_chunks(bot_left: glm::Vec3, lod: usize) -> Vec<Chunk> {

@@ -2,6 +2,10 @@
 use std::{ffi::OsStr, fs, path::Path, process::Command};
 
 fn main() {
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=shaders");
+    println!("cargo:rerun-if-changed=shaders/chunk");
+
     // Note that there are a number of downsides to this approach, the comments
     // below detail how to improve the portability of these commands.
     build_shaders();
@@ -45,7 +49,7 @@ fn read_directory(path: &Path, error: &mut bool) {
                     Ok(x) => {
                         let sterr = std::str::from_utf8(x.stderr.trim_ascii_end().trim_ascii_start()).unwrap();
                         if !sterr.is_empty() {
-                            println!("Error: {}", sterr);
+                            println!("cargo:warning=Error: {}", sterr);
                             *error = true;
                         }
                     }
