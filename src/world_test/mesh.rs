@@ -99,7 +99,6 @@ pub fn mesh(y_axis: &[Gridbits]) -> Vec<GPUQuad> {
                         axis_cols[face][z][x + next_right] &= !((1 as Gridbits) << y);
                         right_extend += 1;
                     }
-                    right_extend += 1;
                     let mut up_extend = 0;
 
                     // EXTEND UP (in plane)
@@ -111,8 +110,8 @@ pub fn mesh(y_axis: &[Gridbits]) -> Vec<GPUQuad> {
                         }
                         let up_bits = &mut axis_cols[face][z + next_up];
 
-                        for right in 0..right_extend {
-                            if (up_bits[right] >> y) & 1 == 0 {
+                        for right in 0..=right_extend {
+                            if (up_bits[right + x] >> y) & 1 == 0 {
                                 extend_up = false;
                                 break;
                             }
@@ -120,8 +119,8 @@ pub fn mesh(y_axis: &[Gridbits]) -> Vec<GPUQuad> {
 
                         if extend_up {
                             // clear all merged up bits
-                            for right in 0..right_extend {
-                                up_bits[right] &= !((1 as Gridbits) << y);
+                            for right in 0..=right_extend {
+                                up_bits[right + x] &= !((1 as Gridbits) << y);
                             }
                             up_extend += 1;
                             continue;
@@ -130,7 +129,7 @@ pub fn mesh(y_axis: &[Gridbits]) -> Vec<GPUQuad> {
                         break;
                     }
 
-                    let width = right_extend;
+                    let width = right_extend + 1;
                     let height = up_extend + 1;
 
                     let pos = axis.get_position(x as u32, y as u32 + add, z as u32);

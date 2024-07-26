@@ -157,7 +157,7 @@ impl ApplicationTrait for TestApplication {
             .add_layout(vulkan.pipeline_layout)
             .add_color_format(vulkan.get_swapchain_format())
             .add_depth(vulkan.get_depth_format(), true, true, vk::CompareOp::LESS_OR_EQUAL)
-            .cull_mode(vk::CullModeFlags::NONE, FrontFace::CLOCKWISE)
+            .cull_mode(vk::CullModeFlags::BACK, FrontFace::CLOCKWISE)
             .add_topology(vk::PrimitiveTopology::TRIANGLE_LIST)
             .add_wire()
             .build::<EmptyVertex>(&vulkan.device, vertex, frag);

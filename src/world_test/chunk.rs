@@ -49,15 +49,16 @@ impl MatArray {
             let y_offset = Chunk::get_y_offset(size, y as f32);
             for z in 0..size {
                 let z_offset = Chunk::get_z_offset(size, z as f32);
+                let current = z % 2;
 
                 for x in 0..size {
-                    let current = x % 2;
                     let x_offset = Chunk::get_x_offset(x);
 
                     mats[y_offset + z_offset + x_offset] = colors[current];
                 }
             }
         }
+
         Self { mats: mats.to_vec() }
     }
 
@@ -97,6 +98,7 @@ impl ChunkMesh {
             .set_memory(Memory::Local)
             .set_type(BufferType::Storage)
             .build_resource(res, cmd);
+
         let chunk_constant = [ChunkConstant { pos: Vec3::zero(), cam_index: 0, quad_index: 0 }];
         Self {
             chunk,
