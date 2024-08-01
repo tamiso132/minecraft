@@ -78,7 +78,7 @@ const uvec2 vertice_orders[18] = uvec2[18](
 
 layout(location = 1) out uint face_num;
 
-const float voxel_scale = 1;
+const float voxel_scale = 0.1;
 
 void main(){
   int64_t quad = quad_buffer[push.quad_index].quads[gl_InstanceIndex].quad;
