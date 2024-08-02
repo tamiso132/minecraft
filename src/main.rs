@@ -545,6 +545,8 @@ extern crate ultraviolet as glm;
 
 mod world_test;
 fn main() {
+    voxelengine::testing_proc_macro();
+    todo!();
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(event_loop::ControlFlow::Poll);
 
