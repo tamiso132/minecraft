@@ -18,6 +18,7 @@ use voxelengine::{
         util, VulkanContext,
     },
 };
+use voxelengine_proc::ImGuiFields;
 use winit::{
     event::{ElementState, Event, RawKeyEvent},
     event_loop::EventLoop,
@@ -109,11 +110,19 @@ pub struct TestApplication {
     resize: bool,
 
     world: World,
-    is_frustum: bool,
-
-    pipeline_index: i32,
 
     chunk_mesh: ChunkMesh,
+
+    variables: ImguiVariables,
+}
+
+#[derive(ImGuiFields, Default)]
+pub struct ImguiVariables {
+    #[slider(0, 1)]
+    pipeline_index: usize,
+    is_frustum: bool,
+    #[slider(1.0, 5.0)]
+    float_test: f32,
 }
 
 impl ApplicationTrait for TestApplication {
@@ -167,6 +176,8 @@ impl ApplicationTrait for TestApplication {
         vulkan.window.focus_window();
 
         vulkan.resources.set_frame(0);
+        let variables = ImguiVariables::default();
+
         Self {
             cam,
             vulkan,
@@ -176,8 +187,7 @@ impl ApplicationTrait for TestApplication {
             focus: false,
             resize: false,
             world,
-            is_frustum: false,
-            pipeline_index: 0,
+            variables,
             cam_buffers,
             chunk_mesh,
         }
@@ -219,7 +229,7 @@ impl ApplicationTrait for TestApplication {
 
             self.vulkan.begin_rendering(vk::AttachmentLoadOp::CLEAR);
 
-            let pipeline = self.pipeline[self.pipeline_index as usize];
+            let pipeline = self.pipeline[self.variables.pipeline_index as usize];
 
             device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, pipeline);
 
@@ -250,10 +260,9 @@ impl ApplicationTrait for TestApplication {
 
             let ui = imgui.get_draw_instance(&self.vulkan.window);
 
-            // ui.slider("pipeline index", 0, 1, &mut self.pipeline_index);
             let set = self.vulkan.resources.set;
 
-            ui.slider("pipeline index", 0, 1, &mut self.pipeline_index);
+            self.variables.render_imgui(ui);
 
             imgui.render(
                 self.vulkan.window_extent,
