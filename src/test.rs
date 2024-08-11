@@ -35,6 +35,7 @@ struct NodeVertex {
     position: glm::Vec3,
 }
 
+
 impl Vertex for NodeVertex {
     fn get_vertex_attribute_desc() -> Vec<vk::VertexInputAttributeDescription> {
         [vk::VertexInputAttributeDescription::default().binding(0).location(0).format(vk::Format::R32G32B32_SFLOAT).offset(0)].to_vec()
@@ -131,7 +132,6 @@ impl ApplicationTrait for TestApplication {
 
         let mut vulkan = VulkanContext::new(&event_loop, MAX_FRAMES_IN_FLIGHT, true);
         //  Octree::new(&mut vulkan.resources.get_buffer_storage(), Vec3::zero());
-
         let cam = Camera::new(vulkan.window_extent);
         let world = World::new(cam.get_pos(), 4);
 
@@ -259,7 +259,6 @@ impl ApplicationTrait for TestApplication {
             let imgui = self.vulkan.imgui.as_mut().unwrap();
 
             let ui = imgui.get_draw_instance(&self.vulkan.window);
-
             let set = self.vulkan.resources.set;
 
             self.variables.render_imgui(ui);
@@ -297,7 +296,6 @@ impl ApplicationTrait for TestApplication {
 
         self.vulkan.imgui.as_mut().unwrap().update_delta_time(delta_time);
         self.last_frame = now;
-
         self.vulkan.imgui.as_mut().unwrap().process_event_imgui(&self.vulkan.window, &event);
         self.cam.process_keyboard(&self.controls, delta_time.as_secs_f64());
     }
