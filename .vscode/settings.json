@@ -1,0 +1,40 @@
+{
+    //     "[rust]": {
+    //         "editor.semanticHighlighting.enabled": false
+    //     },
+    "editor.tokenColorCustomizations": {
+        "[Visual Studio Dark - C++]": {
+            "textMateRules": [
+                {
+                    "scope": "comment.block",
+                    "settings": {
+                        "foreground": "#ffA500",
+                    }
+                },
+                // {
+                //     "scope": "variable.other.rust",
+                //     "settings": {
+                //         "foreground": "#ffA500",meta.function.definition.rust
+                //     }
+                // },
+                {
+                    "scope": [
+                        "variable.other.rust",
+                        "source.rust"
+                    ],
+                    "settings": {
+                        "fontStyle": "",
+                    }
+                }
+            ],
+        }
+    },
+    "editor.semanticTokenColorCustomizations": {
+        "enabled": true,
+        "rules": {
+            "*.mutable": {
+                "underline": false,
+            }
+        }
+    }
+}
