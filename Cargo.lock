@@ -2062,15 +2062,9 @@ name = "voxelengine-proc"
 version = "0.1.0"
 dependencies = [
  "deluxe",
- "env_logger",
- "imgui",
- "imgui-winit-support",
- "log",
- "memoffset",
  "proc-macro2",
  "quote",
  "syn 1.0.109",
- "ultraviolet",
 ]
 
 [[package]]
