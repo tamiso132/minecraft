@@ -2,3 +2,6 @@
 	path = voxelengine
 	url = https://github.com/tamiso132/voxelengine.git
 	branch = main
+[submodule "voxelengine-proc"]
+	path = voxelengine-proc
+	url = https://github.com/tamiso132/voxelengine-proc.git
