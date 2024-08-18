@@ -35,7 +35,6 @@ struct NodeVertex {
     position: glm::Vec3,
 }
 
-
 impl Vertex for NodeVertex {
     fn get_vertex_attribute_desc() -> Vec<vk::VertexInputAttributeDescription> {
         [vk::VertexInputAttributeDescription::default().binding(0).location(0).format(vk::Format::R32G32B32_SFLOAT).offset(0)].to_vec()
@@ -48,7 +47,7 @@ impl NodeVertex {
     }
 }
 
-const Vertices: [NodeVertex; 36] = [
+const VERTICES: [NodeVertex; 36] = [
     // right
     NodeVertex::new(glm::Vec3::new(0.5, 0.5, 0.5)),
     NodeVertex::new(glm::Vec3::new(0.5, 0.5, -0.5)),
@@ -129,13 +128,10 @@ pub struct ImguiVariables {
 impl ApplicationTrait for TestApplication {
     fn on_new(event_loop: &EventLoop<()>) -> Self {
         Builder::new().filter_level(log::LevelFilter::Info).init();
-
         let mut vulkan = VulkanContext::new(&event_loop, MAX_FRAMES_IN_FLIGHT, true);
         //  Octree::new(&mut vulkan.resources.get_buffer_storage(), Vec3::zero());
         let cam = Camera::new(vulkan.window_extent);
         let world = World::new(cam.get_pos(), 4);
-
-        //let objects = world.get_culled();
 
         let cmd = vulkan.cmds[0];
         let mut buffer_builder = BufferBuilder::new();
@@ -153,6 +149,7 @@ impl ApplicationTrait for TestApplication {
             .set_name("camera-buffer")
             .set_data(&[])
             .build_resource(res, cmd);
+
         let chunk_mesh = ChunkMesh::new_test(res, vulkan.graphic, vulkan.cmds[0]);
 
         util::end_cmd_and_submit(&vulkan.device, vulkan.cmds[0], vulkan.graphic, vec![], vec![], vk::Fence::null());
@@ -177,7 +174,6 @@ impl ApplicationTrait for TestApplication {
 
         vulkan.resources.set_frame(0);
         let variables = ImguiVariables::default();
-
         Self {
             cam,
             vulkan,
@@ -211,17 +207,6 @@ impl ApplicationTrait for TestApplication {
             let swapchain_index = self.vulkan.swapchain.image_index;
             let cmd = self.vulkan.cmds[frame_index];
 
-            // let data = &mut self.frame_data[frame_index];
-
-            // device.cmd_bind_descriptor_sets(
-            //     cmd,
-            //     vk::PipelineBindPoint::COMPUTE,
-            //     self.vulkan.pipeline_layout,
-            //     0,
-            //     &[self.vulkan.resources.set],
-            //     &vec![],
-            // );
-
             util::transition_image_color(&device, cmd, self.vulkan.swapchain.images[swapchain_index as usize].image);
 
             let gpu_cam = vec![self.cam.get_gpu_camera()];
@@ -232,8 +217,6 @@ impl ApplicationTrait for TestApplication {
             let pipeline = self.pipeline[self.variables.pipeline_index as usize];
 
             device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, pipeline);
-
-            // device.cmd_bind_vertex_buffers(cmd, 0, &[self.vertex_buffer.buffer], &vec![0]);
 
             device.cmd_bind_descriptor_sets(
                 cmd,

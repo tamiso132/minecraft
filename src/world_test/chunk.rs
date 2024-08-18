@@ -5,7 +5,7 @@ use glm::Vec3;
 use voxelengine::{
     terrain::block::GPUBlock,
     vulkan::{
-        resource::{AllocatedBuffer, BufferBuilder, BufferIndex, BufferStorage, BufferType, Memory},
+        resource::{self, AllocatedBuffer, BufferBuilder, BufferIndex, BufferStorage, BufferType, Memory},
         util::slice_as_u8,
         TKQueue,
     },
@@ -44,20 +44,16 @@ impl MatArray {
     fn new(size: usize) -> MatArray {
         let mut mats = vec![0; size * size * size];
         let colors = [0, 1];
-
-        for y in 0..size {
-            let y_offset = Chunk::get_y_offset(size, y as f32);
-            for z in 0..size {
-                let z_offset = Chunk::get_z_offset(size, z as f32);
-                let current = z % 2;
-
-                for x in 0..size {
-                    let x_offset = Chunk::get_x_offset(x);
-
-                    mats[y_offset + z_offset + x_offset] = colors[current];
-                }
-            }
+        let v = object::load_model("chr_knight.vox");
+        
+        for voxel in v.models[0].voxels.iter(){
+            let y_offset = Chunk::get_y_offset(size, voxel.z as f32);
+            let x_offset = Chunk::get_x_offset(voxel.x as usize);
+            let z_offset = Chunk::get_z_offset(size, voxel.y as f32);
+            mats[y_offset + z_offset + x_offset] = 1;
         }
+
+        mats[Chunk::get_y_offset(size ,size as f32 - 1.0) + Chunk::get_z_offset(size ,0.0) + Chunk::get_x_offset(0)] = 0;
 
         Self { mats: mats.to_vec() }
     }
@@ -81,6 +77,7 @@ pub struct ChunkMesh {
     quad_len: usize,
     draw_commands: Option<Vec<BufferIndex>>,
     chunk_constant: [ChunkConstant; 1],
+    texture_map: BufferIndex,
 }
 
 impl ChunkMesh {
@@ -99,14 +96,17 @@ impl ChunkMesh {
             .set_type(BufferType::Storage)
             .build_resource(res, cmd);
 
+
         let chunk_constant = [ChunkConstant { pos: Vec3::zero(), cam_index: 0, quad_index: 0 }];
+    
         Self {
             chunk,
             center: Vec3::zero(),
             scale: 1.0,
             draw_commands: Some(buffers),
             quad_len: quads.len(),
-            chunk_constant: chunk_constant,
+            chunk_constant,
+            texture_map: 0,
         }
     }
 

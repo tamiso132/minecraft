@@ -16,6 +16,10 @@ impl NoiseParameters {
     }
 }
 
+pub fn test() {
+    let bb = &generate_height_map;
+}
+
 pub fn generate_height_map(global_x: i32, global_z: i32, chunk_resolution: usize, parameters: &NoiseParameters) -> Vec<u32> {
     let x_start = global_x;
     let z_start = global_z;

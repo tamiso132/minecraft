@@ -1,4 +1,5 @@
 pub mod chunk;
+pub mod object;
 mod generation;
 mod mesh;
 mod node;
@@ -9,6 +10,6 @@ const DEPTH: usize = 2;
 const VOXEL_SCALE: f32 = 1.0;
 const CHUNK_SIZE: usize = size_of::<Gridbits>() * 8;
 
-pub type Gridbits = u8;
+pub type Gridbits = u64;
 type TextureID = u8;
 type Chunkindex = u32;
