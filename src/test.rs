@@ -7,6 +7,8 @@ use std::{
 
 use ash::vk::{self, FrontFace};
 use env_logger::Builder;
+use tgui::ImguiId;
+
 use voxelengine::{
     app::ApplicationTrait,
     core::camera::{Camera, Controls, GPUCamera},
@@ -17,6 +19,7 @@ use voxelengine::{
         resource::{BufferBuilder, BufferIndex, BufferType, Memory},
         util, VulkanContext,
     },
+    TImguiRender,
 };
 use voxelengine_proc::ImGuiFields;
 use winit::{
@@ -26,71 +29,10 @@ use winit::{
     window::CursorGrabMode,
 };
 
-use crate::world_test::chunk::ChunkMesh;
+use crate::world_test::{chunk::ChunkMesh, object::GlobalColor};
+use voxelengine::gui::*;
 
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
-
-#[repr(C, align(16))]
-struct NodeVertex {
-    position: glm::Vec3,
-}
-
-impl Vertex for NodeVertex {
-    fn get_vertex_attribute_desc() -> Vec<vk::VertexInputAttributeDescription> {
-        [vk::VertexInputAttributeDescription::default().binding(0).location(0).format(vk::Format::R32G32B32_SFLOAT).offset(0)].to_vec()
-    }
-}
-
-impl NodeVertex {
-    pub const fn new(position: glm::Vec3) -> Self {
-        Self { position }
-    }
-}
-
-const VERTICES: [NodeVertex; 36] = [
-    // right
-    NodeVertex::new(glm::Vec3::new(0.5, 0.5, 0.5)),
-    NodeVertex::new(glm::Vec3::new(0.5, 0.5, -0.5)),
-    NodeVertex::new(glm::Vec3::new(0.5, -0.5, -0.5)),
-    NodeVertex::new(glm::Vec3::new(0.5, -0.5, -0.5)),
-    NodeVertex::new(glm::Vec3::new(0.5, -0.5, 0.5)),
-    NodeVertex::new(glm::Vec3::new(0.5, 0.5, 0.5)),
-    // Left face
-    NodeVertex::new(glm::Vec3::new(-0.5, 0.5, 0.5)),
-    NodeVertex::new(glm::Vec3::new(-0.5, -0.5, -0.5)),
-    NodeVertex::new(glm::Vec3::new(-0.5, 0.5, -0.5)),
-    NodeVertex::new(glm::Vec3::new(-0.5, -0.5, -0.5)),
-    NodeVertex::new(glm::Vec3::new(-0.5, 0.5, 0.5)),
-    NodeVertex::new(glm::Vec3::new(-0.5, -0.5, 0.5)),
-    // Top face
-    NodeVertex::new(glm::Vec3::new(-0.5, 0.5, -0.5)),
-    NodeVertex::new(glm::Vec3::new(0.5, 0.5, -0.5)),
-    NodeVertex::new(glm::Vec3::new(0.5, 0.5, 0.5)),
-    NodeVertex::new(glm::Vec3::new(0.5, 0.5, 0.5)),
-    NodeVertex::new(glm::Vec3::new(-0.5, 0.5, 0.5)),
-    NodeVertex::new(glm::Vec3::new(-0.5, 0.5, -0.5)),
-    // Bottom face
-    NodeVertex::new(glm::Vec3::new(-0.5, -0.5, -0.5)),
-    NodeVertex::new(glm::Vec3::new(0.5, -0.5, 0.5)),
-    NodeVertex::new(glm::Vec3::new(0.5, -0.5, -0.5)),
-    NodeVertex::new(glm::Vec3::new(0.5, -0.5, 0.5)),
-    NodeVertex::new(glm::Vec3::new(-0.5, -0.5, -0.5)),
-    NodeVertex::new(glm::Vec3::new(-0.5, -0.5, 0.5)),
-    // Front face
-    NodeVertex::new(glm::Vec3::new(-0.5, -0.5, 0.5)),
-    NodeVertex::new(glm::Vec3::new(0.5, 0.5, 0.5)),
-    NodeVertex::new(glm::Vec3::new(0.5, -0.5, 0.5)),
-    NodeVertex::new(glm::Vec3::new(0.5, 0.5, 0.5)),
-    NodeVertex::new(glm::Vec3::new(-0.5, -0.5, 0.5)),
-    NodeVertex::new(glm::Vec3::new(-0.5, 0.5, 0.5)),
-    // Back face
-    NodeVertex::new(glm::Vec3::new(-0.5, -0.5, -0.5)),
-    NodeVertex::new(glm::Vec3::new(0.5, -0.5, -0.5)),
-    NodeVertex::new(glm::Vec3::new(0.5, 0.5, -0.5)),
-    NodeVertex::new(glm::Vec3::new(0.5, 0.5, -0.5)),
-    NodeVertex::new(glm::Vec3::new(-0.5, 0.5, -0.5)),
-    NodeVertex::new(glm::Vec3::new(-0.5, -0.5, -0.5)),
-];
 
 /// There should only be application relevant information in these functions
 pub struct TestApplication {
@@ -114,6 +56,10 @@ pub struct TestApplication {
     chunk_mesh: ChunkMesh,
 
     variables: ImguiVariables,
+
+    imgui_id: ImguiId,
+
+    global_color: GlobalColor,
 }
 
 #[derive(ImGuiFields, Default)]
@@ -132,6 +78,7 @@ impl ApplicationTrait for TestApplication {
         //  Octree::new(&mut vulkan.resources.get_buffer_storage(), Vec3::zero());
         let cam = Camera::new(vulkan.window_extent);
         let world = World::new(cam.get_pos(), 4);
+        let mut global_color = GlobalColor { colors: todo!(), indices_taken: todo!(), buffer: 0 };
 
         let cmd = vulkan.cmds[0];
         let mut buffer_builder = BufferBuilder::new();
@@ -150,7 +97,18 @@ impl ApplicationTrait for TestApplication {
             .set_data(&[])
             .build_resource(res, cmd);
 
-        let chunk_mesh = ChunkMesh::new_test(res, vulkan.graphic, vulkan.cmds[0]);
+        let chunk_mesh = ChunkMesh::new_test(res, &mut global_color, vulkan.graphic, vulkan.cmds[0]);
+
+        let data = util::slice_as_u8(&global_color.colors);
+
+        global_color.buffer = buffer_builder
+            .set_frames(1)
+            .set_size(global_color.colors.len() as u64 * 4)
+            .set_memory(Memory::Local)
+            .set_type(BufferType::Storage)
+            .set_is_descriptor(true)
+            .set_data(data)
+            .build_resource(res, cmd)[0];
 
         util::end_cmd_and_submit(&vulkan.device, vulkan.cmds[0], vulkan.graphic, vec![], vec![], vk::Fence::null());
         unsafe { vulkan.device.device_wait_idle().unwrap() };
@@ -186,6 +144,8 @@ impl ApplicationTrait for TestApplication {
             variables,
             cam_buffers,
             chunk_mesh,
+            imgui_id: ImguiId::new(50),
+            global_color,
         }
     }
 
@@ -240,11 +200,13 @@ impl ApplicationTrait for TestApplication {
             self.vulkan.end_rendering();
 
             let imgui = self.vulkan.imgui.as_mut().unwrap();
+            self.imgui_id.start_frame();
 
             let ui = imgui.get_draw_instance(&self.vulkan.window);
             let set = self.vulkan.resources.set;
 
-            self.variables.render_imgui(ui);
+            self.variables.display_imgui(ui, &mut self.imgui_id);
+            self.cam.display_imgui(ui, &mut self.imgui_id);
 
             imgui.render(
                 self.vulkan.window_extent,

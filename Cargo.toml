@@ -19,5 +19,7 @@ libnoise = "1.1.2"
 
 voxelengine = {path = "voxelengine"}
 voxelengine-proc = {path = "voxelengine-proc"}
+voxelengine-gui = { path = "voxelengine-gui" }
+
 deluxe = "0.5.0"
 dot_vox = "5.1.1"

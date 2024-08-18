@@ -26,6 +26,9 @@ use winit::{
     keyboard::KeyCode,
     window::CursorGrabMode,
 };
+extern crate ultraviolet as glm;
+extern crate voxelengine_gui as tgui;
+
 mod test;
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
@@ -512,7 +515,6 @@ pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 //     /// Uniform buffer that has all indices
 //     indices_buffer: AllocatedBuffer,
 // }
-extern crate ultraviolet as glm;
 
 // pub const HZ_MAX: i64 = (1000.0 / 60.0) as i64;
 
