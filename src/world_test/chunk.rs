@@ -40,8 +40,11 @@ use voxelengine::{
 #[derive(Default)]
 struct ChunkConstant {
     pos: Vec3,
-    cam_index: u32,
-    quad_index: u32,
+    pub cam_index: u32,
+    pub quad_index: u32,
+    pub color_index: u32,
+    pub chunk_size: u32,
+
 }
 
 pub struct ChunkMesh {
@@ -69,7 +72,7 @@ impl ChunkMesh {
             .set_type(BufferType::Storage)
             .build_resource(res, cmd);
 
-        let chunk_constant = [ChunkConstant { pos: Vec3::zero(), cam_index: 0, quad_index: 0 }];
+        let chunk_constant = [ChunkConstant { pos: Vec3::zero(),chunk_size: CHUNK_SIZE as u32, ..Default::default()}];
 
         Self {
             chunk,
@@ -81,8 +84,11 @@ impl ChunkMesh {
         }
     }
 
-    pub unsafe fn draw(&self, device: &ash::Device, res: &BufferStorage, cmd: vk::CommandBuffer, layout: vk::PipelineLayout, cam_index: u32) {
+    pub unsafe fn draw(&mut self, device: &ash::Device, res: &BufferStorage, cmd: vk::CommandBuffer, layout: vk::PipelineLayout, cam_index: u32, color_index: u32) {
         let shader_index = res.get_buffer_ref(self.draw_commands.as_ref().unwrap().clone()[0]).index;
+ 
+        self.chunk_constant[0].color_index = color_index;
+        self.chunk_constant[0].cam_index = cam_index;
 
         device.cmd_push_constants(
             cmd,
@@ -153,18 +159,14 @@ struct Chunk {
 }
 impl Chunk {
     fn new(global: &mut GlobalColor) -> Self {
-        let mats = MatArray::new(CHUNK_RESOLUTION);
-        let size = size_of::<Gridbits>();
 
-        let is_solid = vec![0; size * size];
-        let mut material = vec![0; size * size * size];
+        let mut material = vec![0; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE];
 
         let v = object::load_model("chr_knight.vox", global);
-
         for voxel in v.models[0].voxels.iter() {
-            let y_offset = Chunk::get_y_offset(size, voxel.z as f32);
+            let y_offset = Chunk::get_y_offset(CHUNK_SIZE, voxel.z as f32);
             let x_offset = Chunk::get_x_offset(voxel.x as usize);
-            let z_offset = Chunk::get_z_offset(size, voxel.y as f32);
+            let z_offset = Chunk::get_z_offset(CHUNK_SIZE, voxel.y as f32);
             material[y_offset + z_offset + x_offset] = voxel.i as Gridbits;
         }
 

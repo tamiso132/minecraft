@@ -9,7 +9,7 @@ pub struct GlobalColor {
     pub indices_taken: HashMap<MyColor, usize>,
     pub buffer: BufferIndex,
 }
-
+#[repr(align(4))]
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct MyColor {
     pub r: u8,
@@ -26,14 +26,14 @@ pub fn load_model(s: &str, colors: &mut GlobalColor) -> dot_vox::DotVoxData {
 
     for model in &mut v.models {
         for voxels in &mut model.voxels {
-            let color = convert(&v.palette[voxels.i as usize + 1]);
+            let color = convert(&v.palette[voxels.i as usize]);
             let index_overwrite;
             if colors.indices_taken.contains_key(&color) {
                 index_overwrite = colors.indices_taken.get(&color).unwrap();
             } else {
                 colors.indices_taken.insert(color.clone(), colors.colors.len());
                 colors.colors.push(color);
-                voxels.i = (colors.colors.len() - 1) as u8;
+                voxels.i = (colors.colors.len()) as u8;
             }
         }
     }

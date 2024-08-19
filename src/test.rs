@@ -1,6 +1,8 @@
 #![feature(inherent_associated_types)]
 
 use std::{
+    any::Any,
+    collections::HashMap,
     mem::transmute,
     time::{Duration, Instant},
 };
@@ -8,7 +10,6 @@ use std::{
 use ash::vk::{self, FrontFace};
 use env_logger::Builder;
 use tgui::ImguiId;
-
 use voxelengine::{
     app::ApplicationTrait,
     core::camera::{Camera, Controls, GPUCamera},
@@ -51,8 +52,6 @@ pub struct TestApplication {
 
     resize: bool,
 
-    world: World,
-
     chunk_mesh: ChunkMesh,
 
     variables: ImguiVariables,
@@ -77,8 +76,8 @@ impl ApplicationTrait for TestApplication {
         let mut vulkan = VulkanContext::new(&event_loop, MAX_FRAMES_IN_FLIGHT, true);
         //  Octree::new(&mut vulkan.resources.get_buffer_storage(), Vec3::zero());
         let cam = Camera::new(vulkan.window_extent);
-        let world = World::new(cam.get_pos(), 4);
-        let mut global_color = GlobalColor { colors: todo!(), indices_taken: todo!(), buffer: 0 };
+
+        let mut global_color = GlobalColor { colors: vec![], indices_taken: HashMap::new(), buffer: 0 };
 
         let cmd = vulkan.cmds[0];
         let mut buffer_builder = BufferBuilder::new();
@@ -86,7 +85,7 @@ impl ApplicationTrait for TestApplication {
 
         /*Create Vulkan Buffers*/
         let res = vulkan.resources.get_buffer_storage();
-
+        let x = 5;
         let cam_buffers = buffer_builder
             .set_frames(MAX_FRAMES_IN_FLIGHT as u32)
             .set_size(size_of::<GPUCamera>() as u64)
@@ -98,7 +97,6 @@ impl ApplicationTrait for TestApplication {
             .build_resource(res, cmd);
 
         let chunk_mesh = ChunkMesh::new_test(res, &mut global_color, vulkan.graphic, vulkan.cmds[0]);
-
         let data = util::slice_as_u8(&global_color.colors);
 
         global_color.buffer = buffer_builder
@@ -108,7 +106,12 @@ impl ApplicationTrait for TestApplication {
             .set_type(BufferType::Storage)
             .set_is_descriptor(true)
             .set_data(data)
+            .set_name("global_color")
             .build_resource(res, cmd)[0];
+
+        for i in 0..global_color.colors.len() {
+            println!("{:?}", global_color.colors[i]);
+        }
 
         util::end_cmd_and_submit(&vulkan.device, vulkan.cmds[0], vulkan.graphic, vec![], vec![], vk::Fence::null());
         unsafe { vulkan.device.device_wait_idle().unwrap() };
@@ -140,7 +143,6 @@ impl ApplicationTrait for TestApplication {
             controls: Controls::new(),
             focus: false,
             resize: false,
-            world,
             variables,
             cam_buffers,
             chunk_mesh,
@@ -195,6 +197,7 @@ impl ApplicationTrait for TestApplication {
                 cmd,
                 self.vulkan.pipeline_layout,
                 cam_index as u32,
+                self.global_color.buffer as u32,
             );
 
             self.vulkan.end_rendering();

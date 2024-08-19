@@ -4,6 +4,13 @@
 
 #extension GL_ARB_gpu_shader_int64 : enable
 
+struct ColorOut{
+ float r;
+ float g;
+ float b;
+ float a;
+};
+
 struct ChunkConstant {
     uint cam_index;
     vec3 pos;
@@ -18,12 +25,15 @@ struct Quad{
   int64_t quad;
 };
 
+
 // Variables
 
 layout(push_constant) uniform constants {
+  vec3 chunk_offset;
   uint cam_index;
   uint quad_index;
-  vec3 chunk_offset;
+  uint color_index;
+  uint chunk_size;
 } push;
 
 
@@ -35,6 +45,9 @@ layout(std430, set = 0, binding = 2) readonly buffer Quads{
     Quad quads[];
 } quad_buffer[];
 
+layout(std430, set = 0, binding = 2) readonly buffer Colors{
+    uint colors[];
+} color_buffer[];
 
 
 const vec3 normalLookup[6] = {
@@ -77,11 +90,32 @@ const uvec2 vertice_orders[18] = uvec2[18](
 );
 
 layout(location = 1) out uint face_num;
+layout(location = 2) out ColorOut color;
 
 const float voxel_scale = 0.015625;
 
+uint get_world_index(uint x, uint y, uint z, uint chunk_size){
+   return x + (z * chunk_size) + (y * chunk_size * chunk_size);
+}
+
+ColorOut convert_color(uint color){
+
+	float r = float(color & 0xFF) / 256;
+	float g = float((color >> 7) & 0xFF) / 256;
+	float b = float((color >> 14) & 0xFF) / 256;
+
+	ColorOut color_out;
+	color_out.r = r;
+	color_out.g = g;
+	color_out.b = b;
+	color_out.a = 0;
+
+	return color_out;
+}
+
 void main(){
   int64_t quad = quad_buffer[push.quad_index].quads[gl_InstanceIndex].quad;
+
   CameraData camera = cam[push.cam_index].camera;
   int64_t mask = (1 << 7) - 1;
 
@@ -94,14 +128,21 @@ void main(){
 
   uint flip = flipLookup[face]; 
 
+  uint x_uint = uint(quad & mask);
+  uint y_uint = uint((quad >> 7) & mask);
+  uint z_uint = uint((quad >> 14) & mask);
+  uint world_index = get_world_index(x_uint, y_uint, z_uint, push.chunk_size);
+  color = convert_color(color_buffer[push.color_index].colors[world_index]);
 
 // Get the voxel data from the quad
-  float x = float(quad & mask) * voxel_scale;
-  float y = float((quad >> 7) & mask) * voxel_scale;
-  float z = float((quad >> 14) & mask) * voxel_scale;
+  float x = float(x_uint) * voxel_scale;
+  float y = float(y_uint) * voxel_scale;
+  float z = float(z_uint) * voxel_scale;
 
   float w = float((quad >> 21) & mask) * voxel_scale;
   float h = float((quad >> 28) & mask) * voxel_scale;
+
+
 
 // calculate the width axis,  (z, x, x) respective Right, Front, Top
   uint w_dir  = 2 -  2 * (((face >> 2) | (face >> 1)) & 1);
@@ -126,3 +167,6 @@ void main(){
   vec3 normal = normalLookup[face / 2];
   gl_Position = camera.viewproj * final_position;
 }
+
+
+
