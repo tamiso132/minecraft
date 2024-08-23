@@ -66,8 +66,6 @@ pub struct ImguiVariables {
     #[slider(0, 1)]
     pipeline_index: usize,
     is_frustum: bool,
-    #[slider(1.0, 5.0)]
-    float_test: f32,
 }
 
 impl ApplicationTrait for TestApplication {
@@ -77,7 +75,7 @@ impl ApplicationTrait for TestApplication {
         //  Octree::new(&mut vulkan.resources.get_buffer_storage(), Vec3::zero());
         let cam = Camera::new(vulkan.window_extent);
 
-        let mut global_color = GlobalColor { colors: vec![], indices_taken: HashMap::new(), buffer: 0 };
+        let mut global_color = GlobalColor::new();
 
         let cmd = vulkan.cmds[0];
         let mut buffer_builder = BufferBuilder::new();
@@ -109,10 +107,6 @@ impl ApplicationTrait for TestApplication {
             .set_name("global_color")
             .build_resource(res, cmd)[0];
 
-        for i in 0..global_color.colors.len() {
-            println!("{:?}", global_color.colors[i]);
-        }
-
         util::end_cmd_and_submit(&vulkan.device, vulkan.cmds[0], vulkan.graphic, vec![], vec![], vk::Fence::null());
         unsafe { vulkan.device.device_wait_idle().unwrap() };
 
@@ -124,7 +118,7 @@ impl ApplicationTrait for TestApplication {
             .add_layout(vulkan.pipeline_layout)
             .add_color_format(vulkan.get_swapchain_format())
             .add_depth(vulkan.get_depth_format(), true, true, vk::CompareOp::LESS_OR_EQUAL)
-            .cull_mode(vk::CullModeFlags::BACK, FrontFace::CLOCKWISE)
+            .cull_mode(vk::CullModeFlags::BACK, FrontFace::COUNTER_CLOCKWISE)
             .add_topology(vk::PrimitiveTopology::TRIANGLE_LIST)
             .add_wire()
             .build::<EmptyVertex>(&vulkan.device, vertex, frag);
@@ -190,14 +184,14 @@ impl ApplicationTrait for TestApplication {
             );
 
             let cam_index = self.vulkan.resources.get_buffer_storage().get_buffer_ref(self.cam_buffers[frame_index]).index;
-
+            let color_index = self.vulkan.resources.get_buffer_storage().get_buffer_ref(self.global_color.buffer).index;
             self.chunk_mesh.draw(
                 &self.vulkan.device,
                 self.vulkan.resources.get_buffer_storage(),
                 cmd,
                 self.vulkan.pipeline_layout,
                 cam_index as u32,
-                self.global_color.buffer as u32,
+                color_index as u32,
             );
 
             self.vulkan.end_rendering();

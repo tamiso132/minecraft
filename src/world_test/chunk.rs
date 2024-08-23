@@ -1,40 +1,17 @@
-use super::*;
-use ash::vk::{self, PFN_vkAllocateCommandBuffers, PFN_vkCmdDrawMultiEXT};
-use generation::NoiseParameters;
+use ash::vk;
 use glm::Vec3;
+use mesh::GPUQuad;
 use object::GlobalColor;
 use voxelengine::{
     terrain::block::GPUBlock,
     vulkan::{
         resource::{self, AllocatedBuffer, BufferBuilder, BufferIndex, BufferStorage, BufferType, Memory},
-        util::slice_as_u8,
+        util::{self, slice_as_u8},
         TKQueue,
     },
 };
 
-// fn generate_chunk(global_x: i32, global_y: i32, global_z: i32, chunk_resolution: usize) -> Chunk {
-//     let x_start = global_x;
-//     let y_start = global_y;
-//     let z_start = global_z;
-//     let chunk_length = chunk_resolution;
-
-//     let grid = generation::generate_height_map(global_x, global_z, chunk_resolution, &NoiseParameters::default());
-
-//     let mut chunk = Chunk::new();
-
-//     for z in 0..chunk_length {
-//         let z_offset = chunk_resolution * z;
-//         for x in 0..chunk_length {
-//             let height = grid[x + z_offset] as usize;
-//             for y in 0..height {
-//                 let y_offset = chunk_resolution * chunk_resolution * y;
-//                 chunk.mats.mats[y_offset + z_offset + x] = 1;
-//             }
-//         }
-//     }
-
-//     chunk
-// }
+use super::{mesh, object, MatSize, CHUNK_RESOLUTION, CHUNK_SIZE};
 
 #[repr(C, align(16))]
 #[derive(Default)]
@@ -43,8 +20,8 @@ struct ChunkConstant {
     pub cam_index: u32,
     pub quad_index: u32,
     pub color_index: u32,
+    pub world_index: u32,
     pub chunk_size: u32,
-
 }
 
 pub struct ChunkMesh {
@@ -52,13 +29,11 @@ pub struct ChunkMesh {
     center: Vec3,
     scale: f32,
     quad_len: usize,
-    draw_commands: Option<Vec<BufferIndex>>,
     chunk_constant: [ChunkConstant; 1],
 }
-
 impl ChunkMesh {
     pub fn new_test(res: &mut BufferStorage, global_color: &mut GlobalColor, graphic_queue: TKQueue, cmd: vk::CommandBuffer) -> Self {
-        let chunk = Chunk::new(global_color);
+        let chunk = Chunk::new(global_color, res, cmd, graphic_queue);
 
         let quads = mesh::mesh(&chunk.material);
 
@@ -67,157 +42,67 @@ impl ChunkMesh {
             .set_data(slice_as_u8(&quads))
             .set_is_descriptor(true)
             .set_queue_family(graphic_queue)
-            .set_size((quads.len() * size_of::<GPUBlock>()) as u64)
-            .set_memory(Memory::Local)
-            .set_type(BufferType::Storage)
+            .set_size((quads.len() * size_of::<GPUQuad>()) as u64)
             .build_resource(res, cmd);
 
-        let chunk_constant = [ChunkConstant { pos: Vec3::zero(),chunk_size: CHUNK_SIZE as u32, ..Default::default()}];
+        let texture_buffer = chunk.texture_buffer;
 
         Self {
             chunk,
             center: Vec3::zero(),
             scale: 1.0,
-            draw_commands: Some(buffers),
             quad_len: quads.len(),
-            chunk_constant,
+            chunk_constant: [ChunkConstant {
+                pos: Vec3::zero(),
+                cam_index: 0,
+                color_index: res.get_buffer_ref(global_color.buffer).index as u32,
+                chunk_size: 64,
+                quad_index: res.get_buffer_ref(buffers[0]).index as u32,
+                world_index: res.get_buffer_ref(texture_buffer).index as u32,
+            }],
         }
     }
 
-    pub unsafe fn draw(&mut self, device: &ash::Device, res: &BufferStorage, cmd: vk::CommandBuffer, layout: vk::PipelineLayout, cam_index: u32, color_index: u32) {
-        let shader_index = res.get_buffer_ref(self.draw_commands.as_ref().unwrap().clone()[0]).index;
- 
-        self.chunk_constant[0].color_index = color_index;
+    pub fn draw(&mut self, device: &ash::Device, res: &mut BufferStorage, cmd: vk::CommandBuffer, layout: vk::PipelineLayout, cam_index: u32, g_color_index: u32) {
         self.chunk_constant[0].cam_index = cam_index;
-
-        device.cmd_push_constants(
-            cmd,
-            layout,
-            vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE,
-            0,
-            slice_as_u8(&self.chunk_constant),
-        );
-        device.cmd_draw(cmd, 6, self.quad_len as u32, 0, 0);
+        self.chunk_constant[0].color_index = g_color_index;
+        unsafe {
+            device.cmd_push_constants(
+                cmd,
+                layout,
+                vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE,
+                0,
+                slice_as_u8(&self.chunk_constant),
+            )
+        };
+        unsafe { device.cmd_draw(cmd, 6, self.quad_len as u32, 0, 0) };
     }
-
-    // pub fn new(center: Vec3, lod: usize) -> Self {
-    //     let size = 2usize.pow(lod as u32 - 1) as f32 * CHUNK_RESOLUTION as f32 * VOXEL_SCALE;
-    //     let chunks = Self::generate_chunks(center - Vec3::new(size, 0.0, size), lod);
-    //     let chunk = Self::generate_lod_chunk(lod, chunks);
-
-    //     let target_size = CHUNK_RESOLUTION >> lod;
-    //     let scale = target_size as f32 / CHUNK_RESOLUTION as f32;
-    //     Self { center, scale, chunk, draw_commands: None, quad_len: 0, chunk_constant: [ChunkConstant::default()] }
-    // }
-
-    // fn generate_chunks(bot_left: glm::Vec3, lod: usize) -> Vec<Chunk> {
-    //     let chunk_amount = 2usize.pow(lod as u32 - 1);
-    //     let size = 2usize.pow(lod as u32 - 1) as f32 * CHUNK_RESOLUTION as f32 * VOXEL_SCALE;
-    //     let mut chunks = vec![];
-    //     for y in 0..chunk_amount {
-    //         for z in 0..chunk_amount {
-    //             for x in 0..chunk_amount {
-    //                 chunks.push(generate_chunk(bot_left.x as i32, (bot_left.y - size) as i32, bot_left.z as i32, CHUNK_RESOLUTION));
-    //             }
-    //         }
-    //     }
-    //     chunks
-    // }
-
-    // fn generate_lod_chunk(lod: usize, chunks: Vec<Chunk>) -> Chunk {
-    //     let chunk_amount = 2usize.pow(lod as u32 - 1);
-    //     let target_size = CHUNK_RESOLUTION >> lod;
-
-    //     let scale = target_size as f32 / CHUNK_RESOLUTION as f32;
-    //    // let mut chunk = Chunk::new();
-    //     for y in 0..chunk_amount {
-    //         // Offsets
-    //         let y_offset = Chunk::get_y_offset(CHUNK_RESOLUTION, y as f32 * scale);
-    //         let y_chunk_offset = y * chunk_amount * chunk_amount;
-
-    //         for z in 0..chunk_amount {
-    //             // Offsets
-    //             let z_offset = Chunk::get_z_offset(CHUNK_RESOLUTION, z as f32 * scale);
-    //             let z_chunk_offset = z * chunk_amount;
-
-    //             for x in 0..chunk_amount {
-    //                 // Offsets
-    //                 let x_offset = target_size * x;
-    //                 let lod_offset = y_offset + z_offset + x_offset;
-    //                 let chunk_offset = y_chunk_offset + z_chunk_offset + x;
-
-    //                 //    Chunk::generate_lod(&mut chunk, lod_offset, lod, &chunks[chunk_offset].mats.mats);
-    //             }
-    //         }
-    //     }
-    //     chunk
-    // }
 }
+
 #[derive(Debug)]
 struct Chunk {
-    material: Vec<Gridbits>,
+    material: Vec<MatSize>,
+    texture_buffer: BufferIndex,
 }
 impl Chunk {
-    fn new(global: &mut GlobalColor) -> Self {
-
+    fn new(global: &mut GlobalColor, res: &mut BufferStorage, cmd: vk::CommandBuffer, graphic: TKQueue) -> Self {
         let mut material = vec![0; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE];
 
         let v = object::load_model("chr_knight.vox", global);
-        for voxel in v.models[0].voxels.iter() {
-            let y_offset = Chunk::get_y_offset(CHUNK_SIZE, voxel.z as f32);
+        for voxel in v.model.iter() {
+            let y_offset = Chunk::get_y_offset(CHUNK_SIZE, voxel.y as f32);
             let x_offset = Chunk::get_x_offset(voxel.x as usize);
-            let z_offset = Chunk::get_z_offset(CHUNK_SIZE, voxel.y as f32);
-            material[y_offset + z_offset + x_offset] = voxel.i as Gridbits;
+            let z_offset = Chunk::get_z_offset(CHUNK_SIZE, voxel.z as f32);
+
+            material[y_offset + z_offset + x_offset] = voxel.i as MatSize;
         }
 
-        Self { material }
+        let mut builder = BufferBuilder::new_storage_buffer();
+        let mat = util::slice_as_u8(&material);
+        let texture_buffer = builder.set_size(mat.len() as u64).set_data(&mat).set_frames(1).set_queue_family(graphic).set_name("texture_buffer").build_resource(res, cmd)[0];
+
+        Self { material, texture_buffer }
     }
-
-    fn generate_lod(lod_chunk: &mut Chunk, lod_chunk_offset: usize, lod: usize, mats: &Vec<u64>) {
-        // let target_size = CHUNK_RESOLUTION >> lod;
-        // let scale = CHUNK_RESOLUTION / target_size;
-        // for y in 0..target_size {
-        //     let y_target_offset = Chunk::get_y_offset(target_size, y as f32);
-        //     for sz in 0..target_size {
-        //         let z_source_offset = Chunk::get_z_offset(CHUNK_RESOLUTION, (sz * scale) as f32);
-        //         let z_target_offset = Chunk::get_z_offset(target_size, sz as f32);
-
-        //         for sx in 0..target_size {
-        //             let x_source_offset = Chunk::get_x_offset(sx * scale);
-        //             let x_target_offset = Chunk::get_x_offset(sx);
-
-        //             lod_chunk.mats.mats[z_target_offset + x_target_offset + y_target_offset + lod_chunk_offset] = Self::decompress(mats, scale, z_source_offset + x_source_offset);
-        //         }
-        //     }
-        // }
-    }
-
-    // flexible enough to create other functions to use instead
-    /// Decompresses by getting the biggest count of material
-    fn decompress(mats: &Vec<u8>, scale: usize, source_offset: usize) -> u8 {
-        let mut indices = [0u32; u8::MAX as usize];
-        let mut index = 0;
-
-        for y in 0..scale {
-            let y_offset = Chunk::get_y_offset(CHUNK_RESOLUTION, y as f32);
-            for z in 0..scale {
-                let z_offset = Chunk::get_z_offset(CHUNK_RESOLUTION, z as f32);
-                for x in 0..scale {
-                    let x_offset = Chunk::get_x_offset(x);
-                    let color = mats[y_offset + z_offset + x_offset + source_offset];
-
-                    indices[color as usize] += 1;
-
-                    if indices[index as usize] < indices[color as usize] {
-                        index = color;
-                    }
-                }
-            }
-        }
-        index
-    }
-
-    fn draw_mesh() {}
 
     fn get_y_offset(size: usize, y: f32) -> usize {
         (y * (size * size) as f32) as usize

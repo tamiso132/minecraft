@@ -3,6 +3,8 @@
 // STRUCTS
 
 #extension GL_ARB_gpu_shader_int64 : enable
+#extension GL_ARB_gpu_shader_fp64 : enable
+
 
 struct ColorOut{
  float r;
@@ -26,13 +28,12 @@ struct Quad{
 };
 
 
-// Variables
-
 layout(push_constant) uniform constants {
   vec3 chunk_offset;
   uint cam_index;
   uint quad_index;
   uint color_index;
+  uint world_index;
   uint chunk_size;
 } push;
 
@@ -45,10 +46,6 @@ layout(std430, set = 0, binding = 2) readonly buffer Quads{
     Quad quads[];
 } quad_buffer[];
 
-layout(std430, set = 0, binding = 2) readonly buffer Colors{
-    uint colors[];
-} color_buffer[];
-
 
 const vec3 normalLookup[6] = {
   vec3( 0, 1, 0 ),
@@ -59,8 +56,7 @@ const vec3 normalLookup[6] = {
   vec3( 0, 0, -1 )
 };
 // fliping, 1 means flip
-const uint flipLookup[6] = uint[6](0, 1, 0, 1, 0, 1);
-
+const uint flipLookup[6] = uint[6](1, 0, 1, 0, 1, 0);
 // which axis to flip in the vertice order
 const int flip_axis_index[3] = int[3](0, 1, 0);
 
@@ -89,29 +85,14 @@ const uvec2 vertice_orders[18] = uvec2[18](
     uvec2(1, 1)
 );
 
-layout(location = 1) out uint face_num;
-layout(location = 2) out ColorOut color;
-
 const float voxel_scale = 0.015625;
+//const float voxel_scale = 1.0;
 
-uint get_world_index(uint x, uint y, uint z, uint chunk_size){
-   return x + (z * chunk_size) + (y * chunk_size * chunk_size);
-}
+const vec3 add_on_flip[] = vec3[6](vec3(0, 0, 0),vec3(1, 0, 0),vec3(0, 0, 0), vec3(0, 0, 1), vec3(0, 0, 0),vec3(0, 1, 0)); 
 
-ColorOut convert_color(uint color){
+layout(location = 1) out uint face_num;
+layout(location = 2) out vec3 world_pos;
 
-	float r = float(color & 0xFF) / 256;
-	float g = float((color >> 7) & 0xFF) / 256;
-	float b = float((color >> 14) & 0xFF) / 256;
-
-	ColorOut color_out;
-	color_out.r = r;
-	color_out.g = g;
-	color_out.b = b;
-	color_out.a = 0;
-
-	return color_out;
-}
 
 void main(){
   int64_t quad = quad_buffer[push.quad_index].quads[gl_InstanceIndex].quad;
@@ -128,21 +109,12 @@ void main(){
 
   uint flip = flipLookup[face]; 
 
-  uint x_uint = uint(quad & mask);
-  uint y_uint = uint((quad >> 7) & mask);
-  uint z_uint = uint((quad >> 14) & mask);
-  uint world_index = get_world_index(x_uint, y_uint, z_uint, push.chunk_size);
-  color = convert_color(color_buffer[push.color_index].colors[world_index]);
+  float x = float(quad & mask);
+  float y = float((quad >> 7) & mask);
+  float z = float((quad >> 14) & mask);
 
-// Get the voxel data from the quad
-  float x = float(x_uint) * voxel_scale;
-  float y = float(y_uint) * voxel_scale;
-  float z = float(z_uint) * voxel_scale;
-
-  float w = float((quad >> 21) & mask) * voxel_scale;
-  float h = float((quad >> 28) & mask) * voxel_scale;
-
-
+  float h = float((quad >> 28) & mask);
+  float w = float((quad >> 21) & mask);
 
 // calculate the width axis,  (z, x, x) respective Right, Front, Top
   uint w_dir  = 2 -  2 * (((face >> 2) | (face >> 1)) & 1);
@@ -155,13 +127,27 @@ void main(){
   
 // Toggle vertice bit of specific axis if flipped  
   vertex_order[flip_index] = vertex_order[flip_index] ^ (flip << 0);
+float world_w = (w - 1) * float(vertex_order.x);
+float world_h = (h - 1) * float(vertex_order.y);
 
-  w *=   float(vertex_order.x);
+  w *= float(vertex_order.x);
   h *= float(vertex_order.y);
 
-  vec4 final_position = vec4(x, y, z, 1);
-  final_position[w_dir] += w;
-  final_position[h_dir] += h;
+
+
+  vec3 adder = add_on_flip[face];
+
+  vec4 final_position = vec4((x + adder.x) * voxel_scale, (y + adder.y) * voxel_scale, (z + adder.z) * voxel_scale, 1.0);
+
+
+  final_position += (adder, 0);
+
+  final_position[w_dir] += w * voxel_scale;
+  final_position[h_dir] += h * voxel_scale;
+
+  world_pos = vec3(x, y, z);
+  world_pos[w_dir] += world_w;
+  world_pos[h_dir] += world_h;
 
 
   vec3 normal = normalLookup[face / 2];

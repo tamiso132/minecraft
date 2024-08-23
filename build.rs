@@ -45,7 +45,7 @@ fn read_directory(path: &Path, error: &mut bool) {
                     SPV_EXT
                 );
 
-                match Command::new("glslc").arg(path.to_str().unwrap()).arg("-o").arg(output_directory).output() {
+                match Command::new("glslc").arg(path.to_str().unwrap()).arg("-o").arg(output_directory).arg("--target-spv=spv1.6").arg("-g").output() {
                     Ok(x) => {
                         let sterr = std::str::from_utf8(x.stderr.trim_ascii_end().trim_ascii_start()).unwrap();
                         if !sterr.is_empty() {

@@ -99,6 +99,6 @@ where
     let id = ui.push_id(curr_id.get_next_id());
     ui.text(label);
     ui.same_line_with_pos(MAX_NAME_WIDTH);
-    ui.slider(label, min, max, scalar);
+    ui.slider("##", min, max, scalar);
     id.end();
 }

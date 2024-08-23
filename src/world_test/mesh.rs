@@ -4,12 +4,12 @@ use super::*;
 
 use std::fmt::Debug;
 
-pub fn mesh(y_axis: &[Gridbits]) -> Vec<GPUQuad> {
+pub fn mesh(y_axis: &[MatSize]) -> Vec<GPUQuad> {
     let size = size_of::<Gridbits>() * 8;
 
     #[inline]
-    fn insert_voxel_to_axis(x: usize, y: usize, z: usize, block: Gridbits, axis_cols: &mut [[Gridbits; CHUNK_SIZE]; CHUNK_SIZE]) {
-        axis_cols[z][x] |= block << y as Gridbits;
+    fn insert_voxel_to_axis(x: usize, y: usize, z: usize, block: MatSize, axis_cols: &mut [[Gridbits; CHUNK_SIZE]; CHUNK_SIZE]) {
+        axis_cols[z][x] |= (((block != 0) as u128) << y as Gridbits) as Gridbits;
     }
 
     // solid binary for  each axis
@@ -66,7 +66,9 @@ pub fn mesh(y_axis: &[Gridbits]) -> Vec<GPUQuad> {
 
     for face in 0..6 {
         let axis = Axis::from(face as u32 / 2);
-        let add = ((face + 1) % 2 == 0) as u32;
+
+        let is_flip = ((face + 1) % 2 == 0);
+
         for z in 0..size {
             for x in 0..size {
                 let mut column = axis_cols[face][z][x];
@@ -132,14 +134,16 @@ pub fn mesh(y_axis: &[Gridbits]) -> Vec<GPUQuad> {
                     let width = right_extend + 1;
                     let height = up_extend + 1;
 
-                    let pos = axis.get_position(x as u32, y as u32 + add, z as u32);
+                    let pos = axis.get_position(x as u32, y as u32, z as u32);
 
+                    // TODO; world position is incorrect
                     quads.push(GPUQuad::new(pos.0 as u64, pos.1 as u64, pos.2 as u64, width as u64, height as u64, face as u64));
                     let x = 1;
                 }
             }
         }
     }
+
     quads
 }
 

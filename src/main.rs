@@ -544,7 +544,6 @@ pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 //         self.resize = false;
 //     }
 // }
-
 mod world_test;
 fn main() {
     let event_loop = EventLoop::new().unwrap();

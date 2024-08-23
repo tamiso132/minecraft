@@ -19,9 +19,9 @@ pub struct Node {
 impl Node {
     fn new(res: &mut BufferStorage, size: usize, center_pos: glm::Vec3, parent: *mut Node, depth: usize) -> Self {
         //TODO generate chunk data
-     //   let mesh = ChunkMesh::new_test(center_pos, depth);
+        //   let mesh = ChunkMesh::new_test(center_pos, depth);
         todo!();
-       // Self { pos: center_pos, mesh, size, parent, nodes: [std::ptr::null_mut(); 4], depth, buffer: 0 }
+        // Self { pos: center_pos, mesh, size, parent, nodes: [std::ptr::null_mut(); 4], depth, buffer: 0 }
     }
 
     fn render_node() {}
