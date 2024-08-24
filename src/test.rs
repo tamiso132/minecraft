@@ -13,7 +13,6 @@ use tgui::ImguiId;
 use voxelengine::{
     app::ApplicationTrait,
     core::camera::{Camera, Controls, GPUCamera},
-    terrain::{block::GPUBlock, World},
     vulkan::{
         builder::{self},
         mesh::{EmptyVertex, Vertex, VertexBlock},
@@ -30,7 +29,7 @@ use winit::{
     window::CursorGrabMode,
 };
 
-use crate::world_test::{chunk::ChunkMesh, object::GlobalColor};
+use crate::world_test::{self, chunk::ChunkMesh, node::Octree, object::GlobalColor};
 use voxelengine::gui::*;
 
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
@@ -52,7 +51,7 @@ pub struct TestApplication {
 
     resize: bool,
 
-    chunk_mesh: ChunkMesh,
+    world: Octree,
 
     variables: ImguiVariables,
 
@@ -72,6 +71,8 @@ impl ApplicationTrait for TestApplication {
     fn on_new(event_loop: &EventLoop<()>) -> Self {
         Builder::new().filter_level(log::LevelFilter::Info).init();
         let mut vulkan = VulkanContext::new(&event_loop, MAX_FRAMES_IN_FLIGHT, true);
+
+    
         //  Octree::new(&mut vulkan.resources.get_buffer_storage(), Vec3::zero());
         let cam = Camera::new(vulkan.window_extent);
 
@@ -94,7 +95,9 @@ impl ApplicationTrait for TestApplication {
             .set_data(&[])
             .build_resource(res, cmd);
 
-        let chunk_mesh = ChunkMesh::new_test(res, &mut global_color, vulkan.graphic, vulkan.cmds[0]);
+        let chunk_mesh = ChunkMesh::new_test(res, vulkan.graphic, glm::Vec3::zero(), vulkan.cmds[0], 0);
+        let world = Octree::new(res, cmd, vulkan.graphic, glm::Vec3::zero());
+    
         let data = util::slice_as_u8(&global_color.colors);
 
         global_color.buffer = buffer_builder
@@ -139,7 +142,7 @@ impl ApplicationTrait for TestApplication {
             resize: false,
             variables,
             cam_buffers,
-            chunk_mesh,
+            world,
             imgui_id: ImguiId::new(50),
             global_color,
         }
@@ -185,9 +188,8 @@ impl ApplicationTrait for TestApplication {
 
             let cam_index = self.vulkan.resources.get_buffer_storage().get_buffer_ref(self.cam_buffers[frame_index]).index;
             let color_index = self.vulkan.resources.get_buffer_storage().get_buffer_ref(self.global_color.buffer).index;
-            self.chunk_mesh.draw(
+            self.world.draw(
                 &self.vulkan.device,
-                self.vulkan.resources.get_buffer_storage(),
                 cmd,
                 self.vulkan.pipeline_layout,
                 cam_index as u32,

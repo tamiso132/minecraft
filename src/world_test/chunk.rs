@@ -27,14 +27,13 @@ struct ChunkConstant {
 pub struct ChunkMesh {
     chunk: Chunk,
     center: Vec3,
-    scale: f32,
+    lod: u32,
     quad_len: usize,
     chunk_constant: [ChunkConstant; 1],
 }
 impl ChunkMesh {
-    pub fn new_test(res: &mut BufferStorage, global_color: &mut GlobalColor, graphic_queue: TKQueue, cmd: vk::CommandBuffer) -> Self {
-        let chunk = Chunk::new(global_color, res, cmd, graphic_queue);
-
+    pub fn new_test(res: &mut BufferStorage, graphic_queue: TKQueue, center: Vec3, cmd: vk::CommandBuffer, lod: u32) -> Self {
+        let chunk = Chunk::new(res, cmd, graphic_queue, lod);
         let quads = mesh::mesh(&chunk.material);
 
         let buffers = BufferBuilder::new()
@@ -49,13 +48,13 @@ impl ChunkMesh {
 
         Self {
             chunk,
-            center: Vec3::zero(),
-            scale: 1.0,
+            center,
+            lod,
             quad_len: quads.len(),
             chunk_constant: [ChunkConstant {
                 pos: Vec3::zero(),
                 cam_index: 0,
-                color_index: res.get_buffer_ref(global_color.buffer).index as u32,
+                color_index: 0,
                 chunk_size: 64,
                 quad_index: res.get_buffer_ref(buffers[0]).index as u32,
                 world_index: res.get_buffer_ref(texture_buffer).index as u32,
@@ -63,7 +62,7 @@ impl ChunkMesh {
         }
     }
 
-    pub fn draw(&mut self, device: &ash::Device, res: &mut BufferStorage, cmd: vk::CommandBuffer, layout: vk::PipelineLayout, cam_index: u32, g_color_index: u32) {
+    pub fn draw(&mut self, device: &ash::Device, cmd: vk::CommandBuffer, layout: vk::PipelineLayout, cam_index: u32, g_color_index: u32) {
         self.chunk_constant[0].cam_index = cam_index;
         self.chunk_constant[0].color_index = g_color_index;
         unsafe {
@@ -85,16 +84,20 @@ struct Chunk {
     texture_buffer: BufferIndex,
 }
 impl Chunk {
-    fn new(global: &mut GlobalColor, res: &mut BufferStorage, cmd: vk::CommandBuffer, graphic: TKQueue) -> Self {
+    fn new(res: &mut BufferStorage, cmd: vk::CommandBuffer, graphic: TKQueue, lod: u32) -> Self {
         let mut material = vec![0; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE];
+        let chunk_size = CHUNK_SIZE / (2 as usize).pow(lod);
 
-        let v = object::load_model("chr_knight.vox", global);
-        for voxel in v.model.iter() {
-            let y_offset = Chunk::get_y_offset(CHUNK_SIZE, voxel.y as f32);
-            let x_offset = Chunk::get_x_offset(voxel.x as usize);
-            let z_offset = Chunk::get_z_offset(CHUNK_SIZE, voxel.z as f32);
+        for y in 0..chunk_size {
+            let offset_y = Chunk::get_z_offset(CHUNK_SIZE, y as f32);
+            for z in 0..chunk_size {
+                let offset_z = Chunk::get_z_offset(CHUNK_SIZE, z as f32);
+                for x in 0..chunk_size {
+                    let offset_x = Chunk::get_x_offset(x);
 
-            material[y_offset + z_offset + x_offset] = voxel.i as MatSize;
+                    material[offset_x + offset_z + offset_y] = 1;
+                }
+            }
         }
 
         let mut builder = BufferBuilder::new_storage_buffer();

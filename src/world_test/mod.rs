@@ -1,7 +1,7 @@
 pub mod chunk;
 mod generation;
 mod mesh;
-mod node;
+pub mod node;
 pub mod object;
 
 const CHUNK_RESOLUTION: usize = 64;
