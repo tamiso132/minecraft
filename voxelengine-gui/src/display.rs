@@ -88,8 +88,12 @@ pub fn display_text(ui: &mut imgui::Ui, label: &str, curr_id: &mut ImguiId, inpu
     let id = ui.push_id(curr_id.get_next_id());
     ui.text(label);
     ui.same_line_with_pos(MAX_NAME_WIDTH);
-    ui.input_text("##",input);
+    ui.input_text("##", input);
     id.end();
+}
+
+pub fn display_label(ui: &mut imgui::Ui, label: &str, curr_id: &mut ImguiId) {
+    ui.text(label);
 }
 
 pub fn display_slider<T>(ui: &mut imgui::Ui, label: &str, curr_id: &mut ImguiId, min: T, max: T, scalar: &mut T)

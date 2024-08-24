@@ -29,7 +29,12 @@ use winit::{
     window::CursorGrabMode,
 };
 
-use crate::world_test::{self, chunk::ChunkMesh, node::Octree, object::GlobalColor};
+use crate::world_test::{
+    self,
+    chunk::ChunkMesh,
+    node::Octree,
+    object::{load_model, GlobalColor, VoxObject},
+};
 use voxelengine::gui::*;
 
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
@@ -72,7 +77,6 @@ impl ApplicationTrait for TestApplication {
         Builder::new().filter_level(log::LevelFilter::Info).init();
         let mut vulkan = VulkanContext::new(&event_loop, MAX_FRAMES_IN_FLIGHT, true);
 
-    
         //  Octree::new(&mut vulkan.resources.get_buffer_storage(), Vec3::zero());
         let cam = Camera::new(vulkan.window_extent);
 
@@ -95,10 +99,10 @@ impl ApplicationTrait for TestApplication {
             .set_data(&[])
             .build_resource(res, cmd);
 
-        let chunk_mesh = ChunkMesh::new_test(res, vulkan.graphic, glm::Vec3::zero(), vulkan.cmds[0], 0);
-        let world = Octree::new(res, cmd, vulkan.graphic, glm::Vec3::zero());
-    
-        let data = util::slice_as_u8(&global_color.colors);
+        let world = Octree::new(res, cmd, vulkan.graphic, glm::Vec3::zero(), glm::Vec3::zero());
+
+        load_model("chr_knight.vox", &mut global_color);
+        let data = util::slice_as_u8_vec(&global_color.colors);
 
         global_color.buffer = buffer_builder
             .set_frames(1)
@@ -132,6 +136,7 @@ impl ApplicationTrait for TestApplication {
 
         vulkan.resources.set_frame(0);
         let variables = ImguiVariables::default();
+
         Self {
             cam,
             vulkan,
@@ -169,7 +174,7 @@ impl ApplicationTrait for TestApplication {
             util::transition_image_color(&device, cmd, self.vulkan.swapchain.images[swapchain_index as usize].image);
 
             let gpu_cam = vec![self.cam.get_gpu_camera()];
-            self.vulkan.resources.get_buffer_storage().write_to_buffer_host(self.cam_buffers[frame_index], util::slice_as_u8(&gpu_cam));
+            self.vulkan.resources.get_buffer_storage().write_to_buffer_host(self.cam_buffers[frame_index], util::slice_as_u8_vec(&gpu_cam));
 
             self.vulkan.begin_rendering(vk::AttachmentLoadOp::CLEAR);
 
@@ -188,13 +193,7 @@ impl ApplicationTrait for TestApplication {
 
             let cam_index = self.vulkan.resources.get_buffer_storage().get_buffer_ref(self.cam_buffers[frame_index]).index;
             let color_index = self.vulkan.resources.get_buffer_storage().get_buffer_ref(self.global_color.buffer).index;
-            self.world.draw(
-                &self.vulkan.device,
-                cmd,
-                self.vulkan.pipeline_layout,
-                cam_index as u32,
-                color_index as u32,
-            );
+            self.world.draw(&self.vulkan.device, cmd, self.vulkan.pipeline_layout, cam_index as u32, color_index as u32, self.cam.pos);
 
             self.vulkan.end_rendering();
 
@@ -206,6 +205,8 @@ impl ApplicationTrait for TestApplication {
 
             self.variables.display_imgui(ui, &mut self.imgui_id);
             self.cam.display_imgui(ui, &mut self.imgui_id);
+
+            self.world.render_imgui(ui, &mut self.imgui_id);
 
             imgui.render(
                 self.vulkan.window_extent,

@@ -143,7 +143,6 @@ pub fn mesh(y_axis: &[MatSize]) -> Vec<GPUQuad> {
             }
         }
     }
-
     quads
 }
 

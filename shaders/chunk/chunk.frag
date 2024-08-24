@@ -14,6 +14,7 @@ struct ColorOut{
 
 layout(push_constant) uniform constants {
   vec3 chunk_offset;
+  float scale;
   uint cam_index;
   uint quad_index;
   uint color_index;

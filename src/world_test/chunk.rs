@@ -2,21 +2,27 @@ use ash::vk;
 use glm::Vec3;
 use mesh::GPUQuad;
 use object::GlobalColor;
+use tgui::ImguiId;
+use voxelengine::gui::struct_impl::*;
+use voxelengine::vulkan::util::slice_as_u8;
+use voxelengine::TImguiRender;
 use voxelengine::{
     terrain::block::GPUBlock,
     vulkan::{
         resource::{self, AllocatedBuffer, BufferBuilder, BufferIndex, BufferStorage, BufferType, Memory},
-        util::{self, slice_as_u8},
+        util::{self, slice_as_u8_vec},
         TKQueue,
     },
 };
+use voxelengine_proc::ImGuiFields;
 
 use super::{mesh, object, MatSize, CHUNK_RESOLUTION, CHUNK_SIZE};
 
 #[repr(C, align(16))]
-#[derive(Default)]
+#[derive(Default, ImGuiFields)]
 struct ChunkConstant {
     pos: Vec3,
+    pub scale: f32,
     pub cam_index: u32,
     pub quad_index: u32,
     pub color_index: u32,
@@ -24,61 +30,77 @@ struct ChunkConstant {
     pub chunk_size: u32,
 }
 
+#[derive(Default, ImGuiFields)]
 pub struct ChunkMesh {
+    #[ignore_field]
     chunk: Chunk,
-    center: Vec3,
+    #[ignore_field]
+    offset_position: Vec3,
+    #[ignore_field]
     lod: u32,
+    #[ignore_field]
     quad_len: usize,
-    chunk_constant: [ChunkConstant; 1],
+
+    chunk_constant: ChunkConstant,
 }
 impl ChunkMesh {
-    pub fn new_test(res: &mut BufferStorage, graphic_queue: TKQueue, center: Vec3, cmd: vk::CommandBuffer, lod: u32) -> Self {
+    pub fn new_test(res: &mut BufferStorage, graphic_queue: TKQueue, offset_position: Vec3, cmd: vk::CommandBuffer, lod: u32) -> Self {
         let chunk = Chunk::new(res, cmd, graphic_queue, lod);
         let quads = mesh::mesh(&chunk.material);
 
         let buffers = BufferBuilder::new()
             .set_name("ChunkData-1")
-            .set_data(slice_as_u8(&quads))
+            .set_data(slice_as_u8_vec(&quads))
             .set_is_descriptor(true)
             .set_queue_family(graphic_queue)
+            .set_memory(Memory::Local)
             .set_size((quads.len() * size_of::<GPUQuad>()) as u64)
             .build_resource(res, cmd);
 
-        let texture_buffer = chunk.texture_buffer;
+        let texture_buffer = res.get_buffer_ref(chunk.texture_buffer).index;
 
+        let scale = 2u32.pow(lod) as f32;
+        let quarter_size = (CHUNK_RESOLUTION as f32 * scale) / 4.0;
         Self {
             chunk,
-            center,
+            offset_position,
             lod,
             quad_len: quads.len(),
-            chunk_constant: [ChunkConstant {
-                pos: Vec3::zero(),
+            chunk_constant: ChunkConstant {
+                pos: offset_position,
                 cam_index: 0,
                 color_index: 0,
                 chunk_size: 64,
                 quad_index: res.get_buffer_ref(buffers[0]).index as u32,
-                world_index: res.get_buffer_ref(texture_buffer).index as u32,
-            }],
+                world_index: texture_buffer as u32,
+                scale,
+            },
         }
     }
 
     pub fn draw(&mut self, device: &ash::Device, cmd: vk::CommandBuffer, layout: vk::PipelineLayout, cam_index: u32, g_color_index: u32) {
-        self.chunk_constant[0].cam_index = cam_index;
-        self.chunk_constant[0].color_index = g_color_index;
+        let scale = 2u32.pow(self.lod) as f32;
+        let quarter_size = (CHUNK_RESOLUTION as f32 * scale) / 4.0;
+
+        self.chunk_constant.cam_index = cam_index;
+        self.chunk_constant.color_index = g_color_index;
+
+        let slice = slice_as_u8(&self.chunk_constant);
+
         unsafe {
             device.cmd_push_constants(
                 cmd,
                 layout,
                 vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE,
                 0,
-                slice_as_u8(&self.chunk_constant),
+                slice_as_u8_vec(slice),
             )
         };
         unsafe { device.cmd_draw(cmd, 6, self.quad_len as u32, 0, 0) };
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct Chunk {
     material: Vec<MatSize>,
     texture_buffer: BufferIndex,
@@ -86,22 +108,22 @@ struct Chunk {
 impl Chunk {
     fn new(res: &mut BufferStorage, cmd: vk::CommandBuffer, graphic: TKQueue, lod: u32) -> Self {
         let mut material = vec![0; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE];
-        let chunk_size = CHUNK_SIZE / (2 as usize).pow(lod);
+        let chunk_size = CHUNK_SIZE;
 
         for y in 0..chunk_size {
-            let offset_y = Chunk::get_z_offset(CHUNK_SIZE, y as f32);
+            let offset_y = Chunk::get_y_offset(CHUNK_SIZE, y as f32);
             for z in 0..chunk_size {
                 let offset_z = Chunk::get_z_offset(CHUNK_SIZE, z as f32);
                 for x in 0..chunk_size {
                     let offset_x = Chunk::get_x_offset(x);
 
-                    material[offset_x + offset_z + offset_y] = 1;
+                    material[offset_x + offset_z + offset_y] = 10;
                 }
             }
         }
 
         let mut builder = BufferBuilder::new_storage_buffer();
-        let mat = util::slice_as_u8(&material);
+        let mat = util::slice_as_u8_vec(&material);
         let texture_buffer = builder.set_size(mat.len() as u64).set_data(&mat).set_frames(1).set_queue_family(graphic).set_name("texture_buffer").build_resource(res, cmd)[0];
 
         Self { material, texture_buffer }

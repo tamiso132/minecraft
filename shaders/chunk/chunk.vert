@@ -30,6 +30,7 @@ struct Quad{
 
 layout(push_constant) uniform constants {
   vec3 chunk_offset;
+  float scale;
   uint cam_index;
   uint quad_index;
   uint color_index;
@@ -85,17 +86,22 @@ const uvec2 vertice_orders[18] = uvec2[18](
     uvec2(1, 1)
 );
 
-const float voxel_scale = 0.015625;
-//const float voxel_scale = 1.0;
+//const float voxel_scale = 0.015625;
+const float voxel_scale = 1.0;
 
 const vec3 add_on_flip[] = vec3[6](vec3(0, 0, 0),vec3(1, 0, 0),vec3(0, 0, 0), vec3(0, 0, 1), vec3(0, 0, 0),vec3(0, 1, 0)); 
 
 layout(location = 1) out uint face_num;
 layout(location = 2) out vec3 world_pos;
+layout(location = 3) out vec3 offset;
 
 
 void main(){
   int64_t quad = quad_buffer[push.quad_index].quads[gl_InstanceIndex].quad;
+  
+  vec3 chunk_offset = push.chunk_offset;
+  offset = chunk_offset;
+  vec4 offset_yep = vec4(chunk_offset, 0.0);
 
   CameraData camera = cam[push.cam_index].camera;
   int64_t mask = (1 << 7) - 1;
@@ -138,20 +144,25 @@ float world_h = (h - 1) * float(vertex_order.y);
   vec3 adder = add_on_flip[face];
 
   vec4 final_position = vec4((x + adder.x) * voxel_scale, (y + adder.y) * voxel_scale, (z + adder.z) * voxel_scale, 1.0);
+  final_position *= vec4(push.scale, push.scale, push.scale, 1.0);
 
 
   final_position += (adder, 0);
+  final_position += offset_yep;
 
-  final_position[w_dir] += w * voxel_scale;
-  final_position[h_dir] += h * voxel_scale;
+  final_position[w_dir] += w * push.scale;
+  final_position[h_dir] += h * push.scale;
+
 
   world_pos = vec3(x, y, z);
   world_pos[w_dir] += world_w;
   world_pos[h_dir] += world_h;
 
 
+
   vec3 normal = normalLookup[face / 2];
   gl_Position = camera.viewproj * final_position;
+  
 }
 
 
