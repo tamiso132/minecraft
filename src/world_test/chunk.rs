@@ -16,7 +16,24 @@ use voxelengine::{
 };
 use voxelengine_proc::ImGuiFields;
 
+use super::generation::{generate_height_map, NoiseParameters};
 use super::{mesh, object, MatSize, CHUNK_RESOLUTION, CHUNK_SIZE};
+
+
+pub(crate) fn get_y_offset(size: usize, y: f32) -> usize {
+    (y * (size * size) as f32) as usize
+}
+
+pub(crate) fn get_z_offset(size: usize, z: f32) -> usize {
+    (z * (size as f32)) as usize
+}
+
+pub(crate) fn get_x_offset(x: usize) -> usize {
+    x
+}
+
+
+
 
 #[repr(C, align(16))]
 #[derive(Default, ImGuiFields)]
@@ -45,7 +62,7 @@ pub struct ChunkMesh {
 }
 impl ChunkMesh {
     pub fn new_test(res: &mut BufferStorage, graphic_queue: TKQueue, offset_position: Vec3, cmd: vk::CommandBuffer, lod: u32) -> Self {
-        let chunk = Chunk::new(res, cmd, graphic_queue, lod);
+        let chunk = Chunk::new(res, cmd, graphic_queue, lod, offset_position);
         let quads = mesh::mesh(&chunk.material);
 
         let buffers = BufferBuilder::new()
@@ -100,27 +117,21 @@ impl ChunkMesh {
     }
 }
 
+const NOISE_PARAMETER: NoiseParameters = NoiseParameters::default();
+
 #[derive(Debug, Default)]
 struct Chunk {
     material: Vec<MatSize>,
     texture_buffer: BufferIndex,
 }
+
 impl Chunk {
-    fn new(res: &mut BufferStorage, cmd: vk::CommandBuffer, graphic: TKQueue, lod: u32) -> Self {
+    fn new(res: &mut BufferStorage, cmd: vk::CommandBuffer, graphic: TKQueue, lod: u32, global_pos:Vec3) -> Self {
         let mut material = vec![0; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE];
         let chunk_size = CHUNK_SIZE;
+        
+        generate_height_map(global_pos.x as i32, global_pos.z as i32, global_pos.y as i32, chunk_size, &mut material, &NOISE_PARAMETER);
 
-        for y in 0..chunk_size {
-            let offset_y = Chunk::get_y_offset(CHUNK_SIZE, y as f32);
-            for z in 0..chunk_size {
-                let offset_z = Chunk::get_z_offset(CHUNK_SIZE, z as f32);
-                for x in 0..chunk_size {
-                    let offset_x = Chunk::get_x_offset(x);
-
-                    material[offset_x + offset_z + offset_y] = 10;
-                }
-            }
-        }
 
         let mut builder = BufferBuilder::new_storage_buffer();
         let mat = util::slice_as_u8_vec(&material);
