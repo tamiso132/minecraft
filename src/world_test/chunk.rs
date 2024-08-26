@@ -1,3 +1,5 @@
+use std::cmp::min;
+
 use ash::vk;
 use glm::Vec3;
 use mesh::GPUQuad;
@@ -19,7 +21,6 @@ use voxelengine_proc::ImGuiFields;
 use super::generation::{generate_height_map, NoiseParameters};
 use super::{mesh, object, MatSize, CHUNK_RESOLUTION, CHUNK_SIZE};
 
-
 pub(crate) fn get_y_offset(size: usize, y: f32) -> usize {
     (y * (size * size) as f32) as usize
 }
@@ -31,9 +32,6 @@ pub(crate) fn get_z_offset(size: usize, z: f32) -> usize {
 pub(crate) fn get_x_offset(x: usize) -> usize {
     x
 }
-
-
-
 
 #[repr(C, align(16))]
 #[derive(Default, ImGuiFields)]
@@ -59,19 +57,29 @@ pub struct ChunkMesh {
     quad_len: usize,
 
     chunk_constant: ChunkConstant,
+
+    is_empty: bool,
 }
 impl ChunkMesh {
     pub fn new_test(res: &mut BufferStorage, graphic_queue: TKQueue, offset_position: Vec3, cmd: vk::CommandBuffer, lod: u32) -> Self {
         let chunk = Chunk::new(res, cmd, graphic_queue, lod, offset_position);
         let quads = mesh::mesh(&chunk.material);
 
+        println!("Lod level: {}", lod);
+        let mut size = quads.len() * size_of::<GPUQuad>();
+        let mut is_empty = false;
+        if quads.len() == 0 {
+            size = 1;
+            is_empty = true;
+        }
+
         let buffers = BufferBuilder::new()
-            .set_name("ChunkData-1")
+            .set_name("")
             .set_data(slice_as_u8_vec(&quads))
             .set_is_descriptor(true)
             .set_queue_family(graphic_queue)
             .set_memory(Memory::Local)
-            .set_size((quads.len() * size_of::<GPUQuad>()) as u64)
+            .set_size(size as u64)
             .build_resource(res, cmd);
 
         let texture_buffer = res.get_buffer_ref(chunk.texture_buffer).index;
@@ -92,10 +100,15 @@ impl ChunkMesh {
                 world_index: texture_buffer as u32,
                 scale,
             },
+            is_empty,
         }
     }
 
     pub fn draw(&mut self, device: &ash::Device, cmd: vk::CommandBuffer, layout: vk::PipelineLayout, cam_index: u32, g_color_index: u32) {
+        if self.is_empty {
+            return;
+        }
+
         let scale = 2u32.pow(self.lod) as f32;
         let quarter_size = (CHUNK_RESOLUTION as f32 * scale) / 4.0;
 
@@ -126,12 +139,18 @@ struct Chunk {
 }
 
 impl Chunk {
-    fn new(res: &mut BufferStorage, cmd: vk::CommandBuffer, graphic: TKQueue, lod: u32, global_pos:Vec3) -> Self {
+    fn new(res: &mut BufferStorage, cmd: vk::CommandBuffer, graphic: TKQueue, lod: u32, global_pos: Vec3) -> Self {
         let mut material = vec![0; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE];
         let chunk_size = CHUNK_SIZE;
-        
-        generate_height_map(global_pos.x as i32, global_pos.z as i32, global_pos.y as i32, chunk_size, &mut material, &NOISE_PARAMETER);
 
+        generate_height_map(
+            global_pos.x as i32,
+            global_pos.z as i32,
+            global_pos.y as i32,
+            chunk_size,
+            &mut material,
+            &NOISE_PARAMETER,
+        );
 
         let mut builder = BufferBuilder::new_storage_buffer();
         let mat = util::slice_as_u8_vec(&material);

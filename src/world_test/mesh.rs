@@ -4,6 +4,36 @@ use super::*;
 
 use std::fmt::Debug;
 
+// fn check_right(axis_cols: &[[u64; 64]; 64], x: usize, y: usize, z: usize, size: usize) {
+//     let mut right_extend = 0;
+
+//     // EXTEND TO RIGHT (in plane)
+//     let mut is_extend;
+//     loop {
+//         let next_right = right_extend + 1;
+//         // is a block to the right
+//         if (x + next_right) >= size {
+//             break;
+//         }
+
+//         is_extend = (axis_cols[z][x + next_right] >> y) & 1 == 1;
+
+//         // is a face to the right
+//         if !is_extend {
+//             break;
+//         }
+
+//         axis_cols[z][x + next_right] &= !((1 as Gridbits) << y);
+//         right_extend += 1;
+//     }
+// }
+
+// fn clear_right(axis_cols: &mut [[u64; 64]; 64], right_extend_len: usize, x: usize, y: usize, z: usize, size: usize) {
+//     for next_right in right_extend_len {
+//         axis_cols[z][x + next_right] &= !((1 as Gridbits) << y);
+//     }
+// }
+
 pub fn mesh(y_axis: &[MatSize]) -> Vec<GPUQuad> {
     let size = size_of::<Gridbits>() * 8;
 

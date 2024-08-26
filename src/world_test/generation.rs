@@ -1,5 +1,8 @@
 use core::f64;
-use std::{cmp::{max, min}, usize};
+use std::{
+    cmp::{max, min},
+    usize,
+};
 
 use chunk::{get_x_offset, get_y_offset, get_z_offset};
 use libnoise::{Generator, Source};
@@ -7,11 +10,12 @@ use voxelengine::terrain::Chunk;
 
 use super::*;
 
-const SURFACE_LEVEL:f32 = 0.0;
+const SURFACE_LEVEL: f32 = 0.0;
 
 pub struct NoiseParameters {
     amplitude: u32,
     seed: u32,
+    // FREQUENCY
     scale: [f64; 2],
     hill_effect: f64,
 }
@@ -32,10 +36,10 @@ pub(crate) fn generate_height_map(global_x: i32, global_z: i32, global_y: i32, c
     let scale = parameters.scale;
 
     let generator = Source::simplex(seed as u64).add(1.0).scale(scale);
-
-    for z in 0..chunk_length{
+    let mat_generator = Source::simplex(53159491 as u64).add(1.0).scale([100.0]);
+    for z in 0..chunk_length {
         let z_offset = get_z_offset(chunk_length, z as f32);
-        for x in 0..chunk_length{
+        for x in 0..chunk_length {
             let nx = (x as f64 + global_x as f64) / chunk_length as f64;
             let nz = (z as f64 + global_z as f64) / chunk_length as f64;
             let mut sum = 0;
@@ -43,30 +47,40 @@ pub(crate) fn generate_height_map(global_x: i32, global_z: i32, global_y: i32, c
             if global_y < 0 {
                 sum = global_y.abs();
             }
-        
+
             let min_sum = 64 - sum;
 
-            if min_sum  > 0{
+            if min_sum > 0 {
                 let max_amplitude = max(min(min_sum, amplitude as i32), 1) as f64;
 
                 grid[(z_offset + x as usize) as usize] = ((((generator.sample([nx as f64, nz as f64]) * hill_effect).round() / hill_effect) * max_amplitude).round() as u32) + sum as u32;
+            } else {
+                grid[(z_offset + x as usize) as usize] = 64;
+            }
+
+            if global_y >= 63{
+                grid[(z_offset + x as usize) as usize] = 0;
             }
 
         }
     }
 
     for z in 0..chunk_length {
-        
         let z_offset = get_z_offset(chunk_length, z as f32);
-        
+
         for x in 0..chunk_length {
-        
             let x_offset = get_x_offset(x);
 
             let height = grid[(z_offset + x as usize) as usize];
-            for y in 0..height{
+            for y in 0..height {
+
+                let nx = (x as f64 + global_x as f64) / chunk_length as f64;
+                let nz = (z as f64 + global_z as f64) / chunk_length as f64;
+                let ny = (y as f64 + global_y as f64) / chunk_length as f64;
+
                 let y_offset = get_y_offset(chunk_length, y as f32);
-                mat_vec[z_offset + x_offset + y_offset] = 4;
+                let mat = mat_generator.sample([nx as f64 +  nz as f64 + ny as f64]) * 10.0;
+                mat_vec[z_offset + x_offset + y_offset] = mat.round() as MatSize;
             }
         }
     }

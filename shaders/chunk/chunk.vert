@@ -150,8 +150,8 @@ float world_h = (h - 1) * float(vertex_order.y);
   final_position += (adder, 0);
   final_position += offset_yep;
 
-  final_position[w_dir] += w * push.scale;
-  final_position[h_dir] += h * push.scale;
+  final_position[w_dir] += w * push.scale * voxel_scale;
+  final_position[h_dir] += h * push.scale *  voxel_scale;
 
 
   world_pos = vec3(x, y, z);
