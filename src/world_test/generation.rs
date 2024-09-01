@@ -58,10 +58,9 @@ pub(crate) fn generate_height_map(global_x: i32, global_z: i32, global_y: i32, c
                 grid[(z_offset + x as usize) as usize] = 64;
             }
 
-            if global_y >= 63{
+            if global_y >= 63 {
                 grid[(z_offset + x as usize) as usize] = 0;
             }
-
         }
     }
 
@@ -73,13 +72,12 @@ pub(crate) fn generate_height_map(global_x: i32, global_z: i32, global_y: i32, c
 
             let height = grid[(z_offset + x as usize) as usize];
             for y in 0..height {
-
                 let nx = (x as f64 + global_x as f64) / chunk_length as f64;
                 let nz = (z as f64 + global_z as f64) / chunk_length as f64;
                 let ny = (y as f64 + global_y as f64) / chunk_length as f64;
 
                 let y_offset = get_y_offset(chunk_length, y as f32);
-                let mat = mat_generator.sample([nx as f64 +  nz as f64 + ny as f64]) * 10.0;
+                let mat = mat_generator.sample([nx as f64 + nz as f64 + ny as f64]) * 10.0;
                 mat_vec[z_offset + x_offset + y_offset] = mat.round() as MatSize;
             }
         }

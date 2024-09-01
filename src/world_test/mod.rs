@@ -5,7 +5,7 @@ pub mod node;
 pub mod object;
 
 const CHUNK_RESOLUTION: usize = 64;
-const DEPTH: usize = 3;
+const DEPTH: usize = 0;
 
 const VOXEL_SCALE: f32 = 1.0;
 const CHUNK_SIZE: usize = size_of::<Gridbits>() * 8;

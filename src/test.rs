@@ -33,7 +33,7 @@ use crate::world_test::{
     self,
     chunk::ChunkMesh,
     node::Octree,
-    object::{load_model, GlobalColor, VoxObject},
+    object::{self, GlobalColor, GlobalObjects, VoxObject},
 };
 use voxelengine::gui::*;
 
@@ -63,6 +63,8 @@ pub struct TestApplication {
     imgui_id: ImguiId,
 
     global_color: GlobalColor,
+
+    global_objects: GlobalObjects,
 }
 
 #[derive(ImGuiFields, Default)]
@@ -101,7 +103,8 @@ impl ApplicationTrait for TestApplication {
 
         let world = Octree::new(res, cmd, vulkan.graphic, glm::Vec3::zero(), glm::Vec3::zero());
 
-        load_model("chr_knight.vox", &mut global_color);
+        let global_objects = object::init_models(&mut global_color);
+
         let data = util::slice_as_u8_vec(&global_color.colors);
 
         global_color.buffer = buffer_builder
@@ -125,7 +128,7 @@ impl ApplicationTrait for TestApplication {
             .add_layout(vulkan.pipeline_layout)
             .add_color_format(vulkan.get_swapchain_format())
             .add_depth(vulkan.get_depth_format(), true, true, vk::CompareOp::LESS_OR_EQUAL)
-            .cull_mode(vk::CullModeFlags::BACK, FrontFace::COUNTER_CLOCKWISE)
+            .cull_mode(vk::CullModeFlags::NONE, FrontFace::COUNTER_CLOCKWISE)
             .add_topology(vk::PrimitiveTopology::TRIANGLE_LIST)
             .add_wire()
             .build::<EmptyVertex>(&vulkan.device, vertex, frag);
@@ -150,6 +153,7 @@ impl ApplicationTrait for TestApplication {
             world,
             imgui_id: ImguiId::new(50),
             global_color,
+            global_objects,
         }
     }
 
@@ -193,7 +197,14 @@ impl ApplicationTrait for TestApplication {
 
             let cam_index = self.vulkan.resources.get_buffer_storage().get_buffer_ref(self.cam_buffers[frame_index]).index;
             let color_index = self.vulkan.resources.get_buffer_storage().get_buffer_ref(self.global_color.buffer).index;
-            self.world.draw(&self.vulkan.device, cmd, self.vulkan.pipeline_layout, cam_index as u32, color_index as u32, self.cam.pos);
+            self.world.draw(
+                &self.vulkan.device,
+                cmd,
+                self.vulkan.pipeline_layout,
+                cam_index as u32,
+                color_index as u32,
+                self.cam.pos,
+            );
 
             self.vulkan.end_rendering();
 
