@@ -2,11 +2,33 @@ use std::hash::Hash;
 use std::{collections::HashMap, usize};
 
 use dot_vox::{Color, DotVoxData};
+use voxelengine::concurrency::ThreadPool;
 use voxelengine::vulkan::resource::BufferIndex;
+
+pub struct PtrWrapper<T> {
+    data: *mut T,
+}
+
+impl<T> Clone for PtrWrapper<T>{
+fn clone(&self) -> Self {
+    Self { data: (self.data as usize).clone() as *mut T }   
+}
+}
+
+impl<T> PtrWrapper<T>{
+    pub fn new(data: *mut T) -> Self{
+        Self{data}
+    }
+}
+
+unsafe impl<T> Send for PtrWrapper<T> {}
 
 pub struct GlobalObjects {
     objects: Vec<VoxObject>,
 }
+
+unsafe impl Send for VoxObject{}
+unsafe impl Sync for VoxObject{}
 
 pub struct GlobalColor {
     pub colors: Vec<MyColor>,
@@ -31,7 +53,7 @@ impl MyVoxel {
         Self { x, y, z, i }
     }
 }
-
+#[derive(Default)]
 pub struct VoxObject {
     pub model: Vec<MyVoxel>,
 }
@@ -71,7 +93,47 @@ fn load_model(s: &str, g_colors: &mut GlobalColor) -> VoxObject {
     VoxObject { model: my_voxels }
 }
 
-pub fn init_models(g_colors: &mut GlobalColor) -> GlobalObjects {
+fn load_colors_into_hashmap(g_colors: &mut GlobalColor){
+    
+}
+
+fn multi_thread_load_color(model: &str, global_colors: &mut Vec<GlobalColor>)
+{
+    global_colors.push(GlobalColor::new());
+
+    let last_elem_index = global_colors.len() - 1;
+    let mut ptr_color = &mut global_colors[last_elem_index] as *mut GlobalColor;
+
+}
+
+pub fn init_models(g_colors: &mut GlobalColor, thread_pool:&mut ThreadPool) -> GlobalObjects {
+
+    let mut global_objects = GlobalObjects{objects: vec![]};
+    global_objects.objects.push(VoxObject::default());
+    global_objects.objects.push(VoxObject::default());
+  
+    let mut global_colors = vec![];
+    global_colors.push(GlobalColor::new());
+    
+
+    let mut ptr_objects = (&mut global_objects.objects[0]) as *mut VoxObject;
+    let mut ptr_colors = (&mut global_colors[global_colors.len() - 1]) as *mut GlobalColor;
+
+    let handle = std::thread::spawn({
+        
+        let mut ptr_object = PtrWrapper::new(ptr_objects);
+        let mut ptr_color = PtrWrapper::new(ptr_colors);
+
+        move || {
+            let mut ptr_object = ptr_object;
+            let mut ptr_color = ptr_color;
+            unsafe {
+            (*ptr_object.data) = load_model("a", &mut *ptr_color.data);
+            }
+        }
+    });
+
+
     GlobalObjects { objects: vec![load_model("tree.vox", g_colors), load_model("chr_knight.vox", g_colors)] }
 }
 

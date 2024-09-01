@@ -11,15 +11,12 @@ use ash::vk::{self, FrontFace};
 use env_logger::Builder;
 use tgui::ImguiId;
 use voxelengine::{
-    app::ApplicationTrait,
-    core::camera::{Camera, Controls, GPUCamera},
-    vulkan::{
+    app::ApplicationTrait, concurrency::ThreadPool, core::camera::{Camera, Controls, GPUCamera}, vulkan::{
         builder::{self},
         mesh::{EmptyVertex, Vertex, VertexBlock},
         resource::{BufferBuilder, BufferIndex, BufferType, Memory},
         util, VulkanContext,
-    },
-    TImguiRender,
+    }, TImguiRender
 };
 use voxelengine_proc::ImGuiFields;
 use winit::{
@@ -65,6 +62,8 @@ pub struct TestApplication {
     global_color: GlobalColor,
 
     global_objects: GlobalObjects,
+
+    thread_pool: voxelengine::concurrency::ThreadPool,
 }
 
 #[derive(ImGuiFields, Default)]
@@ -140,6 +139,9 @@ impl ApplicationTrait for TestApplication {
         vulkan.resources.set_frame(0);
         let variables = ImguiVariables::default();
 
+        let thread_pool = ThreadPool::new(10);
+        
+
         Self {
             cam,
             vulkan,
@@ -154,6 +156,7 @@ impl ApplicationTrait for TestApplication {
             imgui_id: ImguiId::new(50),
             global_color,
             global_objects,
+            thread_pool,
         }
     }
 
