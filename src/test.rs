@@ -1,5 +1,6 @@
 #![feature(inherent_associated_types)]
 
+use core::panic;
 use std::{
     any::Any,
     collections::HashMap,
@@ -11,12 +12,16 @@ use ash::vk::{self, FrontFace};
 use env_logger::Builder;
 use tgui::ImguiId;
 use voxelengine::{
-    app::ApplicationTrait, concurrency::ThreadPool, core::camera::{Camera, Controls, GPUCamera}, vulkan::{
+    app::ApplicationTrait,
+    concurrency::ThreadPool,
+    core::camera::{Camera, Controls, GPUCamera},
+    vulkan::{
         builder::{self},
         mesh::{EmptyVertex, Vertex, VertexBlock},
         resource::{BufferBuilder, BufferIndex, BufferType, Memory},
         util, VulkanContext,
-    }, TImguiRender
+    },
+    TImguiRender,
 };
 use voxelengine_proc::ImGuiFields;
 use winit::{
@@ -59,8 +64,6 @@ pub struct TestApplication {
 
     imgui_id: ImguiId,
 
-    global_color: GlobalColor,
-
     global_objects: GlobalObjects,
 
     thread_pool: voxelengine::concurrency::ThreadPool,
@@ -77,11 +80,9 @@ impl ApplicationTrait for TestApplication {
     fn on_new(event_loop: &EventLoop<()>) -> Self {
         Builder::new().filter_level(log::LevelFilter::Info).init();
         let mut vulkan = VulkanContext::new(&event_loop, MAX_FRAMES_IN_FLIGHT, true);
-
+        let mut thread_pool = ThreadPool::new(30);
         //  Octree::new(&mut vulkan.resources.get_buffer_storage(), Vec3::zero());
         let cam = Camera::new(vulkan.window_extent);
-
-        let mut global_color = GlobalColor::new();
 
         let cmd = vulkan.cmds[0];
         let mut buffer_builder = BufferBuilder::new();
@@ -101,14 +102,12 @@ impl ApplicationTrait for TestApplication {
             .build_resource(res, cmd);
 
         let world = Octree::new(res, cmd, vulkan.graphic, glm::Vec3::zero(), glm::Vec3::zero());
+        let mut global_objects = object::multi_thread_init(&mut thread_pool);
+        let data = util::slice_as_u8_vec(&global_objects.g_colors.colors);
 
-        let global_objects = object::init_models(&mut global_color);
-
-        let data = util::slice_as_u8_vec(&global_color.colors);
-
-        global_color.buffer = buffer_builder
+        global_objects.g_colors.buffer = buffer_builder
             .set_frames(1)
-            .set_size(global_color.colors.len() as u64 * 4)
+            .set_size(global_objects.g_colors.colors.len() as u64 * 4)
             .set_memory(Memory::Local)
             .set_type(BufferType::Storage)
             .set_is_descriptor(true)
@@ -127,7 +126,7 @@ impl ApplicationTrait for TestApplication {
             .add_layout(vulkan.pipeline_layout)
             .add_color_format(vulkan.get_swapchain_format())
             .add_depth(vulkan.get_depth_format(), true, true, vk::CompareOp::LESS_OR_EQUAL)
-            .cull_mode(vk::CullModeFlags::NONE, FrontFace::COUNTER_CLOCKWISE)
+            .cull_mode(vk::CullModeFlags::BACK, FrontFace::COUNTER_CLOCKWISE)
             .add_topology(vk::PrimitiveTopology::TRIANGLE_LIST)
             .add_wire()
             .build::<EmptyVertex>(&vulkan.device, vertex, frag);
@@ -138,9 +137,6 @@ impl ApplicationTrait for TestApplication {
 
         vulkan.resources.set_frame(0);
         let variables = ImguiVariables::default();
-
-        let thread_pool = ThreadPool::new(10);
-        
 
         Self {
             cam,
@@ -154,7 +150,6 @@ impl ApplicationTrait for TestApplication {
             cam_buffers,
             world,
             imgui_id: ImguiId::new(50),
-            global_color,
             global_objects,
             thread_pool,
         }
@@ -199,7 +194,7 @@ impl ApplicationTrait for TestApplication {
             );
 
             let cam_index = self.vulkan.resources.get_buffer_storage().get_buffer_ref(self.cam_buffers[frame_index]).index;
-            let color_index = self.vulkan.resources.get_buffer_storage().get_buffer_ref(self.global_color.buffer).index;
+            let color_index = self.vulkan.resources.get_buffer_storage().get_buffer_ref(self.global_objects.g_colors.buffer).index;
             self.world.draw(
                 &self.vulkan.device,
                 cmd,
