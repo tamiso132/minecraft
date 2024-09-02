@@ -8,6 +8,7 @@ use std::{
 use ash::vk::{self, CommandBuffer};
 use glm::Vec3;
 use voxelengine::{
+    t_thread::{self, MutPtr, ThreadPool},
     vulkan::{
         resource::{BufferIndex, BufferStorage},
         TKQueue,
@@ -18,7 +19,7 @@ use voxelengine_proc::ImGuiFields;
 
 use crate::world_test::{CHUNK_RESOLUTION, DEPTH, VOXEL_SCALE};
 
-use super::{chunk::ChunkMesh, object::MyVoxel, CHUNK_SIZE, DISTANCE_THRESHOLD, OCTREE_LENGTH};
+use super::{chunk::ChunkMesh, object::MyVoxel, Vec3Wrapper, CHUNK_SIZE, DISTANCE_THRESHOLD, OCTREE_LENGTH};
 
 use voxelengine::gui::struct_impl::*;
 use voxelengine_gui::ImguiId;
@@ -41,15 +42,15 @@ fn distance_from_cube_to_point(point: Vec3, min_corner: Vec3, max_corner: Vec3) 
     distance(point, closest_outer_cube)
 }
 
-#[derive(ImGuiFields)]
+#[derive(ImGuiFields, Default)]
 pub struct Node {
     center_pos: glm::Vec3,
     size: usize,
     scale: f32,
     #[ignore_field]
-    parent: *mut Node,
+    parent: Option<*mut Node>,
     #[ignore_field]
-    nodes: [*mut Node; 8],
+    nodes: Option<[*mut Node; 8]>,
     depth: usize,
     #[ignore_field]
     buffer: BufferIndex,
@@ -59,18 +60,17 @@ pub struct Node {
 }
 
 impl Node {
-    fn new(res: &mut BufferStorage, cmd: vk::CommandBuffer, queue: TKQueue, size: usize, center_pos: glm::Vec3, parent: *mut Node, scale: f32, depth: usize, player: Vec3, chunk_queue: ChunkQueue) -> Self {
+    fn new(res: &mut BufferStorage, cmd: vk::CommandBuffer, queue: TKQueue, size: usize, center_pos: glm::Vec3, parent: Option<*mut Node>, scale: f32, depth: usize, player: Vec3, chunk_queue: ChunkQueue) -> Self {
         //TODO generate chunk data
         let half_size = Vec3::new(size as f32 / 2.0, size as f32 / 2.0, size as f32 / 2.0);
         let offset_position = center_pos - Vec3::new(size as f32 / 2.0, size as f32 / 2.0, size as f32 / 2.0);
-
         unsafe {
             let mut node = Self {
                 center_pos,
                 mesh: ChunkMesh::default(),
                 size,
                 parent,
-                nodes: [MaybeUninit::<*mut Node>::zeroed().assume_init(); 8],
+                nodes: None,
                 depth,
                 buffer: 0,
                 scale,
@@ -84,6 +84,35 @@ impl Node {
             }
 
             node
+        }
+    }
+
+    pub fn raw_new(size: usize, center_pos: glm::Vec3, parent: Option<*mut Node>, scale: f32, depth: usize, chunk_queue: ChunkQueue) -> Self {
+        let half_size = Vec3::new(size as f32 / 2.0, size as f32 / 2.0, size as f32 / 2.0);
+        let offset_position = center_pos - Vec3::new(size as f32 / 2.0, size as f32 / 2.0, size as f32 / 2.0);
+        unsafe {
+            Self {
+                center_pos,
+                mesh: ChunkMesh::default(),
+                size,
+                parent,
+                nodes: None,
+                depth,
+                buffer: 0,
+                scale,
+                chunk_queue,
+            }
+        }
+    }
+
+    fn should_split(&mut self, res: &mut BufferStorage, cmd: vk::CommandBuffer, queue: TKQueue, player: Vec3) {
+        let offset_position = self.center_pos - Vec3::new(self.size as f32 / 2.0, self.size as f32 / 2.0, self.size as f32 / 2.0);
+
+        let half_size = Vec3::new(self.size as f32 / 2.0, self.size as f32 / 2.0, self.size as f32 / 2.0);
+        if self.depth > 0 && distance_from_cube_to_point(player, self.center_pos - half_size, self.center_pos + half_size) < DISTANCE_THRESHOLD {
+            self.split(res, cmd, queue, player);
+        } else {
+            self.mesh = ChunkMesh::new_test(res, queue, offset_position, cmd, self.depth as u32, self.chunk_queue.clone());
         }
     }
 
@@ -105,29 +134,33 @@ impl Node {
         let back_right_bot_pos = Vec3::new(self.center_pos.x + quarter_size, self.center_pos.y - quarter_size, self.center_pos.z - quarter_size);
 
         let pos = [front_left_pos, back_left_pos, front_right_pos, back_right_pos, front_left_bot_pos, back_left_bot_pos, front_right_bot_pos, back_right_bot_pos];
-
+        self.nodes = Some([std::ptr::null_mut(); 8]);
         for i in 0..8 {
-            self.nodes[i] = Box::into_raw(Box::new(Node::new(
-                res,
-                cmd,
-                queue,
+            self.nodes.as_mut().unwrap()[i] = Box::into_raw(Box::new(Node::raw_new(
                 half_size as usize,
                 pos[i],
-                self as *mut Node,
+                Some(self as *mut Node),
                 self.scale / 2.0,
                 self.depth - 1,
-                player,
                 self.chunk_queue.clone(),
             )));
+
+            let ptr = MutPtr::new(self.nodes.as_mut().unwrap()[i]);
+
+            ThreadPool::execute(|| {
+                let mut ptr = ptr;
+                
+                (*ptr.data).should_split(res, cmd, queue, player)
+            });
         }
     }
 
     fn render_node(&mut self, device: &ash::Device, cmd: vk::CommandBuffer, layout: vk::PipelineLayout, cam_index: u32, g_color_index: u32, player: Vec3) {
         if self.distance_to_object(player) < DISTANCE_THRESHOLD {
-            if !self.nodes[0].is_null() {
+            if self.nodes.is_some() {
                 for child in 0..8 {
                     unsafe {
-                        (*self.nodes[child]).render_node(device, cmd, layout, cam_index, g_color_index, player);
+                        (*self.nodes.as_mut().unwrap()[child]).render_node(device, cmd, layout, cam_index, g_color_index, player);
                     }
                 }
             } else {
@@ -137,10 +170,10 @@ impl Node {
     }
 
     fn render_imgui(&mut self, ui: &mut imgui::Ui, imgui_id: &mut ImguiId) {
-        if !self.nodes[0].is_null() {
-            for i in 0..2 {
+        if self.nodes.is_some() {
+            for child in 0..8 {
                 unsafe {
-                    (*self.nodes[i]).display_imgui(ui, imgui_id);
+                    (*self.nodes.as_mut().unwrap()[child]).render_imgui(ui, imgui_id);
                 }
             }
         } else {
@@ -154,16 +187,7 @@ impl Node {
     }
 }
 
-impl Node {}
-
 type OctreeOffset = Vec3Wrapper;
-
-#[derive(PartialOrd, PartialEq)]
-struct Vec3Wrapper {
-    x: f32,
-    y: f32,
-    z: f32,
-}
 
 impl Vec3Wrapper {
     pub fn new(v: &Vec3) -> Self {
@@ -182,9 +206,11 @@ impl Hash for Vec3Wrapper {
 impl Eq for Vec3Wrapper {}
 pub(crate) type ChunkQueue = Arc<Mutex<HashMap<Vec3Wrapper, Vec<MyVoxel>>>>;
 pub struct World {
-    roots: HashMap<OctreeOffset, Octree>,
+    root_indices: HashMap<OctreeOffset, usize>,
     /// adds all the voxels from neighbor chunks
     chunk_add_queue: ChunkQueue,
+
+    roots: Vec<Octree>,
 }
 impl World {
     pub fn new(res: &mut BufferStorage, cmd: vk::CommandBuffer, queue: TKQueue, player: Vec3) -> Self {
@@ -211,14 +237,19 @@ impl World {
 
         let all_octrees_pos = [octree_player_in, left, right, left_z_down, left_z_up, right_z_down, right_z_up, z_down, z_up, z_down_left, z_down_right, z_up_left, z_up_right];
 
-        let mut roots = HashMap::new();
+        let mut roots = vec![];
         let mut chunk_add_queue: ChunkQueue = Arc::new(Mutex::new(HashMap::new()));
+        let mut root_indices = HashMap::new();
         for root_pos in &all_octrees_pos {
-            roots.insert(Vec3Wrapper::new(root_pos), Octree::new(res, cmd, queue, *root_pos, player, chunk_add_queue.clone()));
+            root_indices.insert(Vec3Wrapper::new(root_pos), roots.len());
+            roots.push(Octree::new(res, cmd, queue, *root_pos, player, chunk_add_queue.clone()));
         }
 
-        Self { roots, chunk_add_queue }
+        Self { roots, chunk_add_queue, root_indices }
     }
+    pub fn draw(&mut self, device: &ash::Device, cmd: vk::CommandBuffer, layout: vk::PipelineLayout, cam_index: u32, g_color_index: u32, player: Vec3) {}
+
+    pub fn render_imgui(&mut self, ui: &mut imgui::Ui, imgui_id: &mut ImguiId) {}
 }
 
 pub struct Octree {
@@ -236,7 +267,7 @@ impl Octree {
                 queue,
                 OCTREE_LENGTH as usize,
                 actual_offset,
-                MaybeUninit::<*mut Node>::zeroed().assume_init(),
+                None,
                 VOXEL_SCALE,
                 DEPTH,
                 player,

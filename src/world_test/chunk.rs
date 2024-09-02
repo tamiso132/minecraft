@@ -113,6 +113,10 @@ impl ChunkMesh {
         }
     }
 
+    pub fn upload_to_gpu(){
+        // do uploading to gpu here
+    }
+
     pub fn draw(&mut self, device: &ash::Device, cmd: vk::CommandBuffer, layout: vk::PipelineLayout, cam_index: u32, g_color_index: u32) {
         if self.is_empty {
             return;

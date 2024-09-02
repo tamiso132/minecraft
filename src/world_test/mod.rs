@@ -16,3 +16,10 @@ pub type Gridbits = u64;
 type MatSize = u32;
 type TextureID = u8;
 type Chunkindex = u32;
+
+#[derive(PartialOrd, PartialEq)]
+pub(crate) struct Vec3Wrapper {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+}
