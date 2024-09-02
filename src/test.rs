@@ -10,11 +10,12 @@ use std::{
 
 use ash::vk::{self, FrontFace};
 use env_logger::Builder;
+use glm::Vec3;
 use tgui::ImguiId;
 use voxelengine::{
     app::ApplicationTrait,
-    concurrency::ThreadPool,
     core::camera::{Camera, Controls, GPUCamera},
+    t_thread::ThreadPool,
     vulkan::{
         builder::{self},
         mesh::{EmptyVertex, Vertex, VertexBlock},
@@ -34,7 +35,7 @@ use winit::{
 use crate::world_test::{
     self,
     chunk::ChunkMesh,
-    node::Octree,
+    node::{Octree, World},
     object::{self, GlobalColor, GlobalObjects, VoxObject},
 };
 use voxelengine::gui::*;
@@ -58,15 +59,13 @@ pub struct TestApplication {
 
     resize: bool,
 
-    world: Octree,
+    world: World,
 
     variables: ImguiVariables,
 
     imgui_id: ImguiId,
 
     global_objects: GlobalObjects,
-
-    thread_pool: voxelengine::concurrency::ThreadPool,
 }
 
 #[derive(ImGuiFields, Default)]
@@ -80,7 +79,6 @@ impl ApplicationTrait for TestApplication {
     fn on_new(event_loop: &EventLoop<()>) -> Self {
         Builder::new().filter_level(log::LevelFilter::Info).init();
         let mut vulkan = VulkanContext::new(&event_loop, MAX_FRAMES_IN_FLIGHT, true);
-        let mut thread_pool = ThreadPool::new(30);
         //  Octree::new(&mut vulkan.resources.get_buffer_storage(), Vec3::zero());
         let cam = Camera::new(vulkan.window_extent);
 
@@ -101,8 +99,8 @@ impl ApplicationTrait for TestApplication {
             .set_data(&[])
             .build_resource(res, cmd);
 
-        let world = Octree::new(res, cmd, vulkan.graphic, glm::Vec3::zero(), glm::Vec3::zero());
-        let mut global_objects = object::multi_thread_init(&mut thread_pool);
+        let world = World::new(res, cmd, vulkan.graphic, Vec3::zero());
+        let mut global_objects = object::multi_thread_init();
         let data = util::slice_as_u8_vec(&global_objects.g_colors.colors);
 
         global_objects.g_colors.buffer = buffer_builder
@@ -151,7 +149,6 @@ impl ApplicationTrait for TestApplication {
             world,
             imgui_id: ImguiId::new(50),
             global_objects,
-            thread_pool,
         }
     }
 

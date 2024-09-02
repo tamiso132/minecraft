@@ -7,9 +7,10 @@ pub mod object;
 const CHUNK_RESOLUTION: usize = 64;
 const DEPTH: usize = 1;
 
-const VOXEL_SCALE: f32 = 0.015625;
+const VOXEL_SCALE: f32 = 1.0;
 const CHUNK_SIZE: usize = size_of::<Gridbits>() * 8;
 const DISTANCE_THRESHOLD: f32 = 128.0;
+const OCTREE_LENGTH: f32 = 2u32.pow(DEPTH as u32) as f32 * CHUNK_SIZE as f32 * VOXEL_SCALE;
 
 pub type Gridbits = u64;
 type MatSize = u32;

@@ -2066,6 +2066,7 @@ dependencies = [
  "image",
  "imgui",
  "imgui-winit-support",
+ "lazy_static",
  "libnoise",
  "log",
  "memoffset",

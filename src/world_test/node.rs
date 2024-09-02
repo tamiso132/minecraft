@@ -1,4 +1,9 @@
-use std::mem::MaybeUninit;
+use std::{
+    collections::HashMap,
+    hash::Hash,
+    mem::MaybeUninit,
+    sync::{Arc, Mutex},
+};
 
 use ash::vk::{self, CommandBuffer};
 use glm::Vec3;
@@ -13,7 +18,7 @@ use voxelengine_proc::ImGuiFields;
 
 use crate::world_test::{CHUNK_RESOLUTION, DEPTH, VOXEL_SCALE};
 
-use super::{chunk::ChunkMesh, CHUNK_SIZE, DISTANCE_THRESHOLD};
+use super::{chunk::ChunkMesh, object::MyVoxel, CHUNK_SIZE, DISTANCE_THRESHOLD, OCTREE_LENGTH};
 
 use voxelengine::gui::struct_impl::*;
 use voxelengine_gui::ImguiId;
@@ -49,10 +54,12 @@ pub struct Node {
     #[ignore_field]
     buffer: BufferIndex,
     mesh: ChunkMesh,
+    #[ignore_field]
+    chunk_queue: ChunkQueue,
 }
 
 impl Node {
-    fn new(res: &mut BufferStorage, cmd: vk::CommandBuffer, queue: TKQueue, size: usize, center_pos: glm::Vec3, parent: *mut Node, scale: f32, depth: usize, player: Vec3) -> Self {
+    fn new(res: &mut BufferStorage, cmd: vk::CommandBuffer, queue: TKQueue, size: usize, center_pos: glm::Vec3, parent: *mut Node, scale: f32, depth: usize, player: Vec3, chunk_queue: ChunkQueue) -> Self {
         //TODO generate chunk data
         let half_size = Vec3::new(size as f32 / 2.0, size as f32 / 2.0, size as f32 / 2.0);
         let offset_position = center_pos - Vec3::new(size as f32 / 2.0, size as f32 / 2.0, size as f32 / 2.0);
@@ -67,12 +74,13 @@ impl Node {
                 depth,
                 buffer: 0,
                 scale,
+                chunk_queue,
             };
 
             if depth > 0 && distance_from_cube_to_point(player, center_pos - half_size, center_pos + half_size) < DISTANCE_THRESHOLD {
                 node.split(res, cmd, queue, player);
             } else {
-                node.mesh = ChunkMesh::new_test(res, queue, offset_position, cmd, depth as u32);
+                node.mesh = ChunkMesh::new_test(res, queue, offset_position, cmd, depth as u32, node.chunk_queue.clone());
             }
 
             node
@@ -109,6 +117,7 @@ impl Node {
                 self.scale / 2.0,
                 self.depth - 1,
                 player,
+                self.chunk_queue.clone(),
             )));
         }
     }
@@ -147,29 +156,94 @@ impl Node {
 
 impl Node {}
 
+type OctreeOffset = Vec3Wrapper;
+
+#[derive(PartialOrd, PartialEq)]
+struct Vec3Wrapper {
+    x: f32,
+    y: f32,
+    z: f32,
+}
+
+impl Vec3Wrapper {
+    pub fn new(v: &Vec3) -> Self {
+        Self { x: v.x, y: v.y, z: v.z }
+    }
+}
+
+impl Hash for Vec3Wrapper {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.x.to_bits().hash(state);
+        self.y.to_bits().hash(state);
+        self.z.to_bits().hash(state);
+    }
+}
+
+impl Eq for Vec3Wrapper {}
+pub(crate) type ChunkQueue = Arc<Mutex<HashMap<Vec3Wrapper, Vec<MyVoxel>>>>;
+pub struct World {
+    roots: HashMap<OctreeOffset, Octree>,
+    /// adds all the voxels from neighbor chunks
+    chunk_add_queue: ChunkQueue,
+}
+impl World {
+    pub fn new(res: &mut BufferStorage, cmd: vk::CommandBuffer, queue: TKQueue, player: Vec3) -> Self {
+        let octree_player_in = player / Vec3::new(OCTREE_LENGTH, OCTREE_LENGTH, OCTREE_LENGTH);
+
+        // get octrees around player
+        let left = octree_player_in + Vec3::new(-1.0, 0.0, 0.0);
+        let right = octree_player_in + Vec3::new(1.0, 0.0, 0.0);
+
+        let left_z_up = octree_player_in + Vec3::new(-1.0, 0.0, 1.0);
+        let left_z_down = octree_player_in + Vec3::new(-1.0, 0.0, -1.0);
+
+        let right_z_up = octree_player_in + Vec3::new(1.0, 0.0, 1.0);
+        let right_z_down = octree_player_in + Vec3::new(1.0, 0.0, -1.0);
+
+        let z_up = octree_player_in + Vec3::new(0.0, 0.0, 1.0);
+        let z_down = octree_player_in + Vec3::new(0.0, 0.0, -1.0);
+
+        let z_up_right = octree_player_in + Vec3::new(1.0, 0.0, 1.0);
+        let z_up_left = octree_player_in + Vec3::new(-1.0, 0.0, 1.0);
+
+        let z_down_right = octree_player_in + Vec3::new(1.0, 0.0, -1.0);
+        let z_down_left = octree_player_in + Vec3::new(-1.0, 0.0, -1.0);
+
+        let all_octrees_pos = [octree_player_in, left, right, left_z_down, left_z_up, right_z_down, right_z_up, z_down, z_up, z_down_left, z_down_right, z_up_left, z_up_right];
+
+        let mut roots = HashMap::new();
+        let mut chunk_add_queue: ChunkQueue = Arc::new(Mutex::new(HashMap::new()));
+        for root_pos in &all_octrees_pos {
+            roots.insert(Vec3Wrapper::new(root_pos), Octree::new(res, cmd, queue, *root_pos, player, chunk_add_queue.clone()));
+        }
+
+        Self { roots, chunk_add_queue }
+    }
+}
+
 pub struct Octree {
     root: Node,
+    add_queue: ChunkQueue,
 }
 
 impl Octree {
-    pub fn new(res: &mut BufferStorage, cmd: vk::CommandBuffer, queue: TKQueue, pos: Vec3, player: Vec3) -> Octree {
-        let size_in_voxels = 2usize.pow(DEPTH as u32) * (CHUNK_RESOLUTION);
-        let scale = (size_in_voxels / CHUNK_RESOLUTION) as f32;
-        let size = CHUNK_SIZE * 2usize.pow(DEPTH as u32);
+    pub fn new(res: &mut BufferStorage, cmd: vk::CommandBuffer, queue: TKQueue, octree_offset: Vec3, player: Vec3, add_queue: ChunkQueue) -> Octree {
+        let actual_offset = octree_offset * Vec3::new(OCTREE_LENGTH, OCTREE_LENGTH, OCTREE_LENGTH);
         unsafe {
             let root = Node::new(
                 res,
                 cmd,
                 queue,
-                size,
-                Vec3::new(pos.x, pos.y, pos.z),
+                OCTREE_LENGTH as usize,
+                actual_offset,
                 MaybeUninit::<*mut Node>::zeroed().assume_init(),
-                scale,
+                VOXEL_SCALE,
                 DEPTH,
                 player,
+                add_queue.clone(),
             );
 
-            Self { root }
+            Self { root, add_queue }
         }
     }
 

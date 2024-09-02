@@ -1,13 +1,12 @@
 use core::panic;
+use std::cell::UnsafeCell;
 use std::hash::Hash;
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::{collections::HashMap, usize};
 
 use dot_vox::{Color, DotVoxData};
-use voxelengine::concurrency::{MutPtr, Ptr, ThreadPool};
+use voxelengine::t_thread::{self, MutPtr, Ptr, ThreadPool};
 use voxelengine::vulkan::resource::BufferIndex;
-
-
 
 pub struct GlobalObjects {
     pub objects: Vec<VoxObject>,
@@ -90,7 +89,7 @@ fn load(model: &str) -> DotVoxData {
     dot_vox::load(asset_path.as_str()).unwrap()
 }
 
-fn multi_thread_load_color(model: &DotVoxData, global_colors: &mut GlobalColor, thread_pool: &mut ThreadPool) {
+fn multi_thread_load_color(model: &DotVoxData, global_colors: &mut GlobalColor) {
     let mut ptr_color = MutPtr::new(global_colors);
     let mut ptr_model = Ptr::new(model as *const DotVoxData);
     let my_closure = move || {
@@ -107,8 +106,7 @@ fn multi_thread_load_color(model: &DotVoxData, global_colors: &mut GlobalColor, 
             }
         }
     };
-
-    thread_pool.execute(my_closure);
+    ThreadPool::execute(my_closure);
 }
 
 fn join_all_colors(global_colors: &mut Vec<GlobalColor>) -> GlobalColor {
@@ -131,13 +129,13 @@ fn join_all_colors(global_colors: &mut Vec<GlobalColor>) -> GlobalColor {
     return real_g;
 }
 
-fn multi_thread_objects(models: &Vec<DotVoxData>, g_colors: &GlobalColor, thread_pool: &mut ThreadPool) -> Vec<VoxObject> {
+fn multi_thread_objects(models: &Vec<UnsafeCell<DotVoxData>>, g_colors: &GlobalColor) -> Vec<VoxObject> {
     let mut objects = Vec::with_capacity(models.len());
     for i in 0..models.len() {
         objects.push(VoxObject::default());
 
         let g_color_ptr = Ptr::new(g_colors);
-        let model_ptr = Ptr::new(&models[i]);
+        let model_ptr = Ptr::new(models[i].get().cast_const());
         let voxel_ptr = MutPtr::new(&mut objects[i]);
 
         let closure = (|| {
@@ -159,45 +157,40 @@ fn multi_thread_objects(models: &Vec<DotVoxData>, g_colors: &GlobalColor, thread
             }
         });
     }
-    thread_pool.join_all();
+    ThreadPool::join_tasks();
     objects
 }
 
-pub fn multi_thread_init(thread_pool: &mut ThreadPool) -> GlobalObjects {
+pub fn multi_thread_init() -> GlobalObjects {
     let model_names = ["tree.vox", "chr_knight.vox"];
 
-    let mut dots: Vec<DotVoxData> = Vec::with_capacity(model_names.len());
+    let mut dots: Vec<UnsafeCell<DotVoxData>> = Vec::with_capacity(model_names.len());
     unsafe {
         dots.set_len(model_names.len());
     }
 
     for i in 0..model_names.len() {
-        let dox_ptr = MutPtr::new(&mut dots[i]);
+        let dox_ptr = MutPtr::new(dots[i].get());
         let str_ptr = Ptr::new(&model_names[i]);
 
-        thread_pool.execute(|| {
+        ThreadPool::execute(|| {
             let dox_ptr = dox_ptr;
             let str_ptr = str_ptr;
 
             unsafe { (dox_ptr).data.write(load(*str_ptr.data)) };
         });
     }
-
-    thread_pool.join_all();
-
+    ThreadPool::join_tasks();
+    
     let mut threaded_colors = Vec::with_capacity(dots.len());
     for i in 0..dots.len() {
         threaded_colors.push(GlobalColor::new());
-        multi_thread_load_color(&dots[i], &mut threaded_colors[i], thread_pool);
+        multi_thread_load_color(unsafe { &*dots[i].get().cast_const() }, &mut threaded_colors[i]);
     }
-    thread_pool.join_all();
+
+    ThreadPool::join_tasks();
     let g_colors = join_all_colors(&mut threaded_colors);
-    let objects = multi_thread_objects(&dots, &g_colors, thread_pool);
-    // let mut objects = vec![];
-    // let mut g_colors = GlobalColor::new();
-    // for i in 0..model_names.len() {
-    //     objects.push(load_model(model_names[i], &mut g_colors));
-    // }
+    let objects = multi_thread_objects(&dots, &g_colors);
 
     GlobalObjects { objects, g_colors }
 }

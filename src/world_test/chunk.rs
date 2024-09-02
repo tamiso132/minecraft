@@ -19,6 +19,7 @@ use voxelengine::{
 use voxelengine_proc::ImGuiFields;
 
 use super::generation::{generate_height_map, NoiseParameters};
+use super::node::ChunkQueue;
 use super::{mesh, object, MatSize, CHUNK_RESOLUTION, CHUNK_SIZE};
 
 pub(crate) fn get_y_offset(size: usize, y: f32) -> usize {
@@ -58,14 +59,21 @@ pub struct ChunkMesh {
 
     chunk_constant: ChunkConstant,
 
+    #[ignore_field]
+    chunk_queue: ChunkQueue,
+
     is_empty: bool,
 }
 impl ChunkMesh {
-    pub fn new_test(res: &mut BufferStorage, graphic_queue: TKQueue, offset_position: Vec3, cmd: vk::CommandBuffer, lod: u32) -> Self {
+    pub fn new_test(res: &mut BufferStorage, graphic_queue: TKQueue, offset_position: Vec3, cmd: vk::CommandBuffer, lod: u32, chunk_queue: ChunkQueue) -> Self {
+        // APPLY basic terrain
+
         let chunk = Chunk::new(res, cmd, graphic_queue, lod, offset_position);
+
+        // APPLY TREE ISH
+
         let quads = mesh::mesh(&chunk.material);
 
-        println!("Lod level: {}", lod);
         let mut size = quads.len() * size_of::<GPUQuad>();
         let mut is_empty = false;
         if quads.len() == 0 {
@@ -101,6 +109,7 @@ impl ChunkMesh {
                 scale,
             },
             is_empty,
+            chunk_queue,
         }
     }
 
@@ -155,7 +164,6 @@ impl Chunk {
         let mut builder = BufferBuilder::new_storage_buffer();
         let mat = util::slice_as_u8_vec(&material);
         let texture_buffer = builder.set_size(mat.len() as u64).set_data(&mat).set_frames(1).set_queue_family(graphic).set_name("texture_buffer").build_resource(res, cmd)[0];
-
         Self { material, texture_buffer }
     }
 
