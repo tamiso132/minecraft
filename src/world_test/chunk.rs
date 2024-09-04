@@ -113,7 +113,7 @@ impl ChunkMesh {
         }
     }
 
-    pub fn upload_to_gpu(){
+    pub fn upload_to_gpu() {
         // do uploading to gpu here
     }
 
@@ -156,7 +156,7 @@ impl Chunk {
         let mut material = vec![0; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE];
         let chunk_size = CHUNK_SIZE;
 
-        generate_height_map(
+        let surface_grid = generate_height_map(
             global_pos.x as i32,
             global_pos.z as i32,
             global_pos.y as i32,

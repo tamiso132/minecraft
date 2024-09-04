@@ -1,6 +1,7 @@
 use core::f64;
 use std::{
     cmp::{max, min},
+    collections::HashMap,
     usize,
 };
 
@@ -26,7 +27,8 @@ impl NoiseParameters {
     }
 }
 
-pub(crate) fn generate_height_map(global_x: i32, global_z: i32, global_y: i32, chunk_resolution: usize, mat_vec: &mut Vec<MatSize>, parameters: &NoiseParameters) -> Vec<u32> {
+/// independent from other CHUNK_RESOLUTION
+pub(crate) fn generate_basic_terrain(global_x: i32, global_y: i32, global_z: i32, lod_scale: usize, mat_vec: &mut Vec<MatSize>, parameters: &NoiseParameters) -> Vec<u32> {
     let chunk_length = CHUNK_RESOLUTION;
 
     let mut grid = vec![0u32; chunk_length * chunk_length];
@@ -37,33 +39,27 @@ pub(crate) fn generate_height_map(global_x: i32, global_z: i32, global_y: i32, c
 
     let generator = Source::simplex(seed as u64).add(1.0).scale(scale);
     let mat_generator = Source::simplex(53159491 as u64).add(1.0).scale([100.0]);
+
+    // when surface begins
+    let min_surface = {
+        if global_y < SURFACE_LEVEL as i32 {
+            (SURFACE_LEVEL as i32 - global_y).abs()
+        } else {
+            0
+        }
+    };
+
     for z in 0..chunk_length {
         let z_offset = get_z_offset(chunk_length, z as f32);
         for x in 0..chunk_length {
-            let nx = (x as f64 + global_x as f64) / chunk_length as f64;
-            let nz = (z as f64 + global_z as f64) / chunk_length as f64;
-            let mut sum = 0;
+            let nx = (x as f64 * lod_scale as f64 + global_x as f64) / chunk_length as f64;
+            let nz = (z as f64 * lod_scale as f64 + global_z as f64) / chunk_length as f64;
 
-            if global_y < 0 {
-                sum = global_y.abs();
-            }
+            let surface_y = ((((generator.sample([nx as f64, nz as f64]) * hill_effect).round() / hill_effect) * amplitude as f64).round() as u32);
 
-            let min_sum = 64 - sum;
-
-            if min_sum > 0 {
-                let max_amplitude = max(min(min_sum, amplitude as i32), 1) as f64;
-
-                grid[(z_offset + x as usize) as usize] = ((((generator.sample([nx as f64, nz as f64]) * hill_effect).round() / hill_effect) * max_amplitude).round() as u32) + sum as u32;
-            } else {
-                grid[(z_offset + x as usize) as usize] = 64;
-            }
-
-            if global_y >= 63 {
-                grid[(z_offset + x as usize) as usize] = 0;
-            }
+            grid[z_offset + x as usize] = max(min_surface as u32, surface_y);
         }
     }
-
     for z in 0..chunk_length {
         let z_offset = get_z_offset(chunk_length, z as f32);
 
@@ -84,3 +80,44 @@ pub(crate) fn generate_height_map(global_x: i32, global_z: i32, global_y: i32, c
     }
     grid
 }
+
+pub(crate) fn generate_surface(grid: &Vec<u32>, lod_scale: usize, chunk_resolution: usize, global_x: i32, global_y: i32, global_z: i32) -> Vec<u32> {
+    let chunk_length = CHUNK_RESOLUTION;
+
+    // do a check if it is possible
+
+    let highest_point = CHUNK_RESOLUTION * lod_scale + global_y;
+
+    if highest_point < SURFACE_LEVEL{
+        // everything is solid
+        todo!();
+        // return
+    }
+    
+
+    if lod_scale > 1 {
+        let higher_res_scale = lod_scale / 2;
+
+        let mut frequency: HashMap<usize, usize> = HashMap::new();
+
+        for z in 0..CHUNK_RESOLUTION {
+            let curr_global_z = global_z + z * lod_scale;
+            for x in 0..CHUNK_RESOLUTION {
+                let curr_global_x = global_x * x * lod_scale;
+
+                for zz in 0..2 {
+                    let higher_scale_z = curr_global_z + zz * higher_res_scale;
+                    for xx in 0..2 {
+                        let higher_scale_x = curr_global_x * xx * higher_res_scale;
+                    }
+                }
+
+                frequency.clear();
+            }
+        }
+    }
+    todo!();
+}
+
+
+fn is_full_solid() {}

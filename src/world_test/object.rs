@@ -181,7 +181,7 @@ pub fn multi_thread_init() -> GlobalObjects {
         });
     }
     ThreadPool::join_tasks();
-    
+
     let mut threaded_colors = Vec::with_capacity(dots.len());
     for i in 0..dots.len() {
         threaded_colors.push(GlobalColor::new());
