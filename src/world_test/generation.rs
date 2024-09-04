@@ -14,11 +14,11 @@ use super::*;
 const SURFACE_LEVEL: f32 = 0.0;
 
 pub struct NoiseParameters {
-    amplitude: u32,
-    seed: u32,
+    pub amplitude: u32,
+    pub seed: u32,
     // FREQUENCY
-    scale: [f64; 2],
-    hill_effect: f64,
+    pub scale: [f64; 2],
+    pub hill_effect: f64,
 }
 
 impl NoiseParameters {
@@ -26,6 +26,8 @@ impl NoiseParameters {
         Self { amplitude: 10, seed: 51251351, scale: [0.2, 0.2], hill_effect: 15.0 }
     }
 }
+
+pub(crate) fn noise_map_2d(noise_param: &NoiseParameters) {}
 
 /// independent from other CHUNK_RESOLUTION
 pub(crate) fn generate_basic_terrain(global_x: i32, global_y: i32, global_z: i32, lod_scale: usize, mat_vec: &mut Vec<MatSize>, parameters: &NoiseParameters) -> Vec<u32> {
@@ -36,10 +38,8 @@ pub(crate) fn generate_basic_terrain(global_x: i32, global_y: i32, global_z: i32
     let seed = parameters.seed;
     let hill_effect = parameters.hill_effect;
     let scale = parameters.scale;
-
     let generator = Source::simplex(seed as u64).add(1.0).scale(scale);
     let mat_generator = Source::simplex(53159491 as u64).add(1.0).scale([100.0]);
-
     // when surface begins
     let min_surface = {
         if global_y < SURFACE_LEVEL as i32 {
@@ -49,36 +49,36 @@ pub(crate) fn generate_basic_terrain(global_x: i32, global_y: i32, global_z: i32
         }
     };
 
-    for z in 0..chunk_length {
-        let z_offset = get_z_offset(chunk_length, z as f32);
-        for x in 0..chunk_length {
-            let nx = (x as f64 * lod_scale as f64 + global_x as f64) / chunk_length as f64;
-            let nz = (z as f64 * lod_scale as f64 + global_z as f64) / chunk_length as f64;
+    // for z in 0..chunk_length {
+    //     let z_offset = get_z_offset(chunk_length, z as f32);
+    //     for x in 0..chunk_length {
+    //         let nx = (x as f64 * lod_scale as f64 + global_x as f64) / chunk_length as f64;
+    //         let nz = (z as f64 * lod_scale as f64 + global_z as f64) / chunk_length as f64;
 
-            let surface_y = ((((generator.sample([nx as f64, nz as f64]) * hill_effect).round() / hill_effect) * amplitude as f64).round() as u32);
+    //         let surface_y = ((((generator.sample([nx as f64, nz as f64]) * hill_effect).round() / hill_effect) * amplitude as f64).round() as u32);
 
-            grid[z_offset + x as usize] = max(min_surface as u32, surface_y);
-        }
-    }
-    for z in 0..chunk_length {
-        let z_offset = get_z_offset(chunk_length, z as f32);
+    //         grid[z_offset + x as usize] = max(min_surface as u32, surface_y);
+    //     }
+    // }
+    // for z in 0..chunk_length {
+    //     let z_offset = get_z_offset(chunk_length, z as f32);
 
-        for x in 0..chunk_length {
-            let x_offset = get_x_offset(x);
+    //     for x in 0..chunk_length {
+    //         let x_offset = get_x_offset(x);
 
-            let height = grid[(z_offset + x as usize) as usize];
-            for y in 0..height {
-                let nx = (x as f64 + global_x as f64) / chunk_length as f64;
-                let nz = (z as f64 + global_z as f64) / chunk_length as f64;
-                let ny = (y as f64 + global_y as f64) / chunk_length as f64;
+    //         let height = grid[(z_offset + x as usize) as usize];
+    //         for y in 0..height {
+    //             let nx = (x as f64 + global_x as f64) / chunk_length as f64;
+    //             let nz = (z as f64 + global_z as f64) / chunk_length as f64;
+    //             let ny = (y as f64 + global_y as f64) / chunk_length as f64;
 
-                let y_offset = get_y_offset(chunk_length, y as f32);
-                let mat = mat_generator.sample([nx as f64 + nz as f64 + ny as f64]) * 10.0;
-                mat_vec[z_offset + x_offset + y_offset] = mat.round() as MatSize;
-            }
-        }
-    }
-    grid
+    //             let y_offset = get_y_offset(chunk_length, y as f32);
+    //             let mat = mat_generator.sample([nx as f64 + nz as f64 + ny as f64]) * 10.0;
+    //             mat_vec[z_offset + x_offset + y_offset] = mat.round() as MatSize;
+    //         }
+    //     }
+    // }
+    todo!();
 }
 
 pub(crate) fn generate_surface(grid: &Vec<u32>, lod_scale: usize, chunk_resolution: usize, global_x: i32, global_y: i32, global_z: i32) -> Vec<u32> {
@@ -86,24 +86,24 @@ pub(crate) fn generate_surface(grid: &Vec<u32>, lod_scale: usize, chunk_resoluti
 
     // do a check if it is possible
 
-    let highest_point = CHUNK_RESOLUTION * lod_scale + global_y;
+    let highest_point = CHUNK_RESOLUTION as i32 * lod_scale as i32 + global_y;
 
-    if highest_point < SURFACE_LEVEL{
+    if highest_point < SURFACE_LEVEL as i32 {
         // everything is solid
+
         todo!();
         // return
     }
-    
 
     if lod_scale > 1 {
-        let higher_res_scale = lod_scale / 2;
+        let higher_res_scale = lod_scale as i32 / 2;
 
         let mut frequency: HashMap<usize, usize> = HashMap::new();
 
         for z in 0..CHUNK_RESOLUTION {
-            let curr_global_z = global_z + z * lod_scale;
+            let curr_global_z = global_z + z as i32 * lod_scale as i32;
             for x in 0..CHUNK_RESOLUTION {
-                let curr_global_x = global_x * x * lod_scale;
+                let curr_global_x = global_x * x as i32 * lod_scale as i32;
 
                 for zz in 0..2 {
                     let higher_scale_z = curr_global_z + zz * higher_res_scale;
@@ -118,6 +118,5 @@ pub(crate) fn generate_surface(grid: &Vec<u32>, lod_scale: usize, chunk_resoluti
     }
     todo!();
 }
-
 
 fn is_full_solid() {}

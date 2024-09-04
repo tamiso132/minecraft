@@ -18,16 +18,16 @@ use voxelengine::{
 };
 use voxelengine_proc::ImGuiFields;
 
-use super::generation::{generate_height_map, NoiseParameters};
+use super::generation::NoiseParameters;
 use super::node::ChunkQueue;
 use super::{mesh, object, MatSize, CHUNK_RESOLUTION, CHUNK_SIZE};
 
-pub(crate) fn get_y_offset(size: usize, y: f32) -> usize {
-    (y * (size * size) as f32) as usize
+pub(crate) fn get_y_offset(y: usize) -> usize {
+    y * CHUNK_RESOLUTION * CHUNK_RESOLUTION
 }
 
-pub(crate) fn get_z_offset(size: usize, z: f32) -> usize {
-    (z * (size as f32)) as usize
+pub(crate) fn get_z_offset(z: usize) -> usize {
+    z * CHUNK_RESOLUTION
 }
 
 pub(crate) fn get_x_offset(x: usize) -> usize {
@@ -156,14 +156,14 @@ impl Chunk {
         let mut material = vec![0; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE];
         let chunk_size = CHUNK_SIZE;
 
-        let surface_grid = generate_height_map(
-            global_pos.x as i32,
-            global_pos.z as i32,
-            global_pos.y as i32,
-            chunk_size,
-            &mut material,
-            &NOISE_PARAMETER,
-        );
+        // let surface_grid = generate_height_map(
+        //     global_pos.x as i32,
+        //     global_pos.z as i32,
+        //     global_pos.y as i32,
+        //     chunk_size,
+        //     &mut material,
+        //     &NOISE_PARAMETER,
+        // );
 
         let mut builder = BufferBuilder::new_storage_buffer();
         let mat = util::slice_as_u8_vec(&material);

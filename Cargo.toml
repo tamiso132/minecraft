@@ -23,3 +23,4 @@ voxelengine-gui = { path = "voxelengine-gui" }
 
 deluxe = "0.5.0"
 dot_vox = "5.1.1"
+tasc = "0.1.2"

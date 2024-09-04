@@ -150,7 +150,7 @@ impl Node {
             ThreadPool::execute(|| {
                 let mut ptr = ptr;
 
-                (*ptr.data).should_split(res, cmd, queue, player)
+                //(*ptr.data).should_split(res, cmd, queue, player)
             });
         }
     }
