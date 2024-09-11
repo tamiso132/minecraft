@@ -1,7 +1,6 @@
 pub mod biome;
 pub mod chunk;
 mod generation;
-pub mod layer;
 mod mesh;
 pub mod node;
 pub mod object;
@@ -25,8 +24,13 @@ pub(crate) struct Vec3Wrapper {
     pub y: f32,
     pub z: f32,
 }
-
+#[derive(Clone, Copy)]
 pub struct Range<T> {
     pub min: T,
     pub max: T,
+}
+impl<T> Range<T> {
+    pub fn new(min: T, max: T) -> Self {
+        Self { min, max }
+    }
 }

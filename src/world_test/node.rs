@@ -17,9 +17,15 @@ use voxelengine::{
 };
 use voxelengine_proc::ImGuiFields;
 
-use crate::world_test::{CHUNK_RESOLUTION, DEPTH, VOXEL_SCALE};
+use crate::world_test::{Range, CHUNK_RESOLUTION, DEPTH, VOXEL_SCALE};
 
-use super::{chunk::ChunkMesh, object::MyVoxel, Vec3Wrapper, CHUNK_SIZE, DISTANCE_THRESHOLD, OCTREE_LENGTH};
+use super::{
+    biome::{self, layer::HeightMap, BiomeBuilder, Flatland},
+    chunk::ChunkMesh,
+    generation::NoiseParameters,
+    object::MyVoxel,
+    Vec3Wrapper, CHUNK_SIZE, DISTANCE_THRESHOLD, OCTREE_LENGTH,
+};
 
 use voxelengine::gui::struct_impl::*;
 use voxelengine_gui::ImguiId;
@@ -61,7 +67,6 @@ pub struct Node {
 
 impl Node {
     fn new(res: &mut BufferStorage, cmd: vk::CommandBuffer, queue: TKQueue, size: usize, center_pos: glm::Vec3, parent: Option<*mut Node>, scale: f32, depth: usize, player: Vec3, chunk_queue: ChunkQueue) -> Self {
-        //TODO generate chunk data
         let half_size = Vec3::new(size as f32 / 2.0, size as f32 / 2.0, size as f32 / 2.0);
         let offset_position = center_pos - Vec3::new(size as f32 / 2.0, size as f32 / 2.0, size as f32 / 2.0);
         unsafe {
@@ -205,15 +210,21 @@ impl Hash for Vec3Wrapper {
 
 impl Eq for Vec3Wrapper {}
 pub(crate) type ChunkQueue = Arc<Mutex<HashMap<Vec3Wrapper, Vec<MyVoxel>>>>;
+
 pub struct World {
     root_indices: HashMap<OctreeOffset, usize>,
     /// adds all the voxels from neighbor chunks
     chunk_add_queue: ChunkQueue,
 
     roots: Vec<Octree>,
+
+    world_seed: u64,
 }
 impl World {
     pub fn new(res: &mut BufferStorage, cmd: vk::CommandBuffer, queue: TKQueue, player: Vec3) -> Self {
+        // CREATE BIOMES
+
+        let world_seed: u64 = 35151445149;
         let octree_player_in = player / Vec3::new(OCTREE_LENGTH, OCTREE_LENGTH, OCTREE_LENGTH);
 
         // get octrees around player
@@ -245,7 +256,7 @@ impl World {
             roots.push(Octree::new(res, cmd, queue, *root_pos, player, chunk_add_queue.clone()));
         }
 
-        Self { roots, chunk_add_queue, root_indices }
+        Self { roots, chunk_add_queue, root_indices, world_seed: 531513 }
     }
     pub fn draw(&mut self, device: &ash::Device, cmd: vk::CommandBuffer, layout: vk::PipelineLayout, cam_index: u32, g_color_index: u32, player: Vec3) {}
 

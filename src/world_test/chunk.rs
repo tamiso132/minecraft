@@ -18,9 +18,10 @@ use voxelengine::{
 };
 use voxelengine_proc::ImGuiFields;
 
+use super::biome::TBiome;
 use super::generation::NoiseParameters;
 use super::node::ChunkQueue;
-use super::{mesh, object, MatSize, CHUNK_RESOLUTION, CHUNK_SIZE};
+use super::{biome, mesh, object, MatSize, CHUNK_RESOLUTION, CHUNK_SIZE};
 
 pub(crate) fn get_y_offset(y: usize) -> usize {
     y * CHUNK_RESOLUTION * CHUNK_RESOLUTION
@@ -156,14 +157,10 @@ impl Chunk {
         let mut material = vec![0; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE];
         let chunk_size = CHUNK_SIZE;
 
-        // let surface_grid = generate_height_map(
-        //     global_pos.x as i32,
-        //     global_pos.z as i32,
-        //     global_pos.y as i32,
-        //     chunk_size,
-        //     &mut material,
-        //     &NOISE_PARAMETER,
-        // );
+        let lod_scale = 2u32.pow(lod) as i32;
+
+        let biome_instance = biome::AllBiomes::get_instance();
+        biome_instance.flatland.generate_biome(&mut material, global_pos.x as i32, global_pos.y as i32, global_pos.z as i32, lod_scale);
 
         let mut builder = BufferBuilder::new_storage_buffer();
         let mat = util::slice_as_u8_vec(&material);

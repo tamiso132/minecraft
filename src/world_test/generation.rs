@@ -15,8 +15,7 @@ const SURFACE_LEVEL: f32 = 0.0;
 
 pub struct NoiseParameters {
     pub amplitude: u32,
-    pub seed: u32,
-    // FREQUENCY
+    pub seed: u64,
     pub scale: [f64; 2],
     pub hill_effect: f64,
 }

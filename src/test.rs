@@ -1,6 +1,10 @@
 #![feature(inherent_associated_types)]
 
+use ash::vk::{self, FrontFace};
+use awedio::Sound;
 use core::panic;
+use env_logger::Builder;
+use glm::Vec3;
 use std::{
     any::Any,
     collections::HashMap,
@@ -8,9 +12,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use ash::vk::{self, FrontFace};
-use env_logger::Builder;
-use glm::Vec3;
 use tgui::ImguiId;
 use voxelengine::{
     app::ApplicationTrait,
@@ -66,6 +67,8 @@ pub struct TestApplication {
     imgui_id: ImguiId,
 
     global_objects: GlobalObjects,
+
+    color_test: [f32; 4],
 }
 
 #[derive(ImGuiFields, Default)]
@@ -78,6 +81,7 @@ pub struct ImguiVariables {
 impl ApplicationTrait for TestApplication {
     fn on_new(event_loop: &EventLoop<()>) -> Self {
         Builder::new().filter_level(log::LevelFilter::Info).init();
+
         let mut vulkan = VulkanContext::new(&event_loop, MAX_FRAMES_IN_FLIGHT, true);
         //  Octree::new(&mut vulkan.resources.get_buffer_storage(), Vec3::zero());
         let cam = Camera::new(vulkan.window_extent);
@@ -149,6 +153,7 @@ impl ApplicationTrait for TestApplication {
             world,
             imgui_id: ImguiId::new(50),
             global_objects,
+            color_test: [0.0, 0.0, 0.0, 0.0],
         }
     }
 
@@ -192,14 +197,14 @@ impl ApplicationTrait for TestApplication {
 
             let cam_index = self.vulkan.resources.get_buffer_storage().get_buffer_ref(self.cam_buffers[frame_index]).index;
             let color_index = self.vulkan.resources.get_buffer_storage().get_buffer_ref(self.global_objects.g_colors.buffer).index;
-            self.world.draw(
-                &self.vulkan.device,
-                cmd,
-                self.vulkan.pipeline_layout,
-                cam_index as u32,
-                color_index as u32,
-                self.cam.pos,
-            );
+            // self.world.draw(
+            //     &self.vulkan.device,
+            //     cmd,
+            //     self.vulkan.pipeline_layout,
+            //     cam_index as u32,
+            //     color_index as u32,
+            //     self.cam.pos,
+            // );
 
             self.vulkan.end_rendering();
 
