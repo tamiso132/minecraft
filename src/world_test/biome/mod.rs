@@ -11,6 +11,10 @@ use super::{
 use layer::{BlockLayer, ChunkParameter, HeightMap, Layer};
 
 
+pub struct Block{
+    variations: Vec<u8>,
+}
+
 pub struct AllBiomes {
     pub flatland: Flatland,
     /// used so other crates cannot intantiate it
@@ -23,22 +27,22 @@ impl AllBiomes {
         // LOAD all colors
         
         
-        
-        let mut flatland_builder = BiomeBuilder::default();
-        {
-            let temp_range: Range<f32> = super::Range::new(0.0, 20.0);
-            let rain_density = super::Range::new(0.0, 0.4);
+        // let mut flatland_builder = BiomeBuilder::default();
+        // {
+        //     let temp_range: Range<f32> = super::Range::new(0.0, 20.0);
+        //     let rain_density = super::Range::new(0.0, 0.4);
 
-            let base_surface = 50;
+        //     let base_surface = 50;
 
-            let amplitude = 10;
-            let scale: [f64; 2] = [0.01, 0.01];
-            let hill_effect = 15.0;
-            let param = NoiseParameters { amplitude: amplitude, seed: 5315314314, scale, hill_effect };
+        //     let amplitude = 10;
+        //     let scale: [f64; 2] = [0.01, 0.01];
+        //     let hill_effect = 15.0;
+        //     let param = NoiseParameters { amplitude: amplitude, seed: 5315314314, scale, hill_effect };
 
-            flatland_builder.add_temp(temp_range).add_rainfall_freq(rain_density).add_height_map(HeightMap { base_surface, param }).add_block_layer(BlockLayer::new(Range::new(-500 500), block_types, scale, seed));
-        }
-        Self { flatland: Flatland::new(flatland_builder), phantom: PhantomData::default() }
+        //     flatland_builder.add_temp(temp_range).add_rainfall_freq(rain_density).add_height_map(HeightMap { base_surface, param }).add_block_layer(BlockLayer::new(Range::new(-500 500), block_types, scale, seed));
+        // }
+        todo!()
+        //Self { flatland: Flatland::new(flatland_builder), phantom: PhantomData::default() }
     }
 }
 
@@ -122,7 +126,7 @@ impl TBiome for Flatland {
         todo!()
     }
 
-    fn load_biome() {}
+    fn load_biome(global_color:) {}
 
     fn generate_biome(&self, chunk: &mut Vec<u32>, global_x: i32, global_y: i32, global_z: i32, lod_scale: i32) {
         let chunk_length = CHUNK_RESOLUTION;
@@ -161,5 +165,3 @@ impl TBiome for Flatland {
 
 impl BiomeType {}
 
-/// saves all variations
-struct Block {}

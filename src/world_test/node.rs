@@ -215,10 +215,12 @@ pub struct GlobalData {
     // biomes
     pub flatland: Flatland,
     // material
-    pub material: GlobalColor,
+    pub material: Arc<Mutex<GlobalColor>>,
 }
 impl GlobalData {
     pub fn new() -> Self {
+        // initialize all material
+        // initialize all biomes?
         todo!()
     }
 }
