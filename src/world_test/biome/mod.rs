@@ -9,11 +9,7 @@ use super::{
     MatSize, Range, CHUNK_RESOLUTION,
 };
 use layer::{BlockLayer, ChunkParameter, HeightMap, Layer};
-use lazy_static::lazy_static;
 
-lazy_static! {
-    static ref GLOBAL_BIOMES: AllBiomes = AllBiomes::new();
-}
 
 pub struct AllBiomes {
     pub flatland: Flatland,
@@ -43,9 +39,6 @@ impl AllBiomes {
             flatland_builder.add_temp(temp_range).add_rainfall_freq(rain_density).add_height_map(HeightMap { base_surface, param }).add_block_layer(BlockLayer::new(Range::new(-500 500), block_types, scale, seed));
         }
         Self { flatland: Flatland::new(flatland_builder), phantom: PhantomData::default() }
-    }
-    pub fn get_instance() -> &'static AllBiomes {
-        &GLOBAL_BIOMES
     }
 }
 
