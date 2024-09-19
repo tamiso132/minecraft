@@ -20,7 +20,7 @@ use voxelengine_proc::ImGuiFields;
 
 use super::biome::TBiome;
 use super::generation::NoiseParameters;
-use super::node::ChunkQueue;
+use super::node::{ChunkQueue, GlobalData};
 use super::{biome, mesh, object, MatSize, CHUNK_RESOLUTION, CHUNK_SIZE};
 
 pub(crate) fn get_y_offset(y: usize) -> usize {
@@ -66,10 +66,10 @@ pub struct ChunkMesh {
     is_empty: bool,
 }
 impl ChunkMesh {
-    pub fn new_test(res: &mut BufferStorage, graphic_queue: TKQueue, offset_position: Vec3, cmd: vk::CommandBuffer, lod: u32, chunk_queue: ChunkQueue) -> Self {
+    pub fn new_test(global_data: &GlobalData, res: &mut BufferStorage, graphic_queue: TKQueue, offset_position: Vec3, cmd: vk::CommandBuffer, lod: u32, chunk_queue: ChunkQueue) -> Self {
         // APPLY basic terrain
 
-        let chunk = Chunk::new(res, cmd, graphic_queue, lod, offset_position);
+        let chunk = Chunk::new(global_data, res, cmd, graphic_queue, lod, offset_position);
 
         // APPLY TREE ISH
 
@@ -153,14 +153,13 @@ struct Chunk {
 }
 
 impl Chunk {
-    fn new(res: &mut BufferStorage, cmd: vk::CommandBuffer, graphic: TKQueue, lod: u32, global_pos: Vec3) -> Self {
+    fn new(global_data: &GlobalData, res: &mut BufferStorage, cmd: vk::CommandBuffer, graphic: TKQueue, lod: u32, global_pos: Vec3) -> Self {
         let mut material = vec![0; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE];
         let chunk_size = CHUNK_SIZE;
 
         let lod_scale = 2u32.pow(lod) as i32;
 
-        let biome_instance = biome::AllBiomes::get_instance();
-        biome_instance.flatland.generate_biome(&mut material, global_pos.x as i32, global_pos.y as i32, global_pos.z as i32, lod_scale);
+        global_data.flatland.generate_biome(&mut material, global_pos.x as i32, global_pos.y as i32, global_pos.z as i32, lod_scale);
 
         let mut builder = BufferBuilder::new_storage_buffer();
         let mat = util::slice_as_u8_vec(&material);

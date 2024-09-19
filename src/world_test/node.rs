@@ -23,7 +23,7 @@ use super::{
     biome::{self, layer::HeightMap, BiomeBuilder, Flatland},
     chunk::ChunkMesh,
     generation::NoiseParameters,
-    object::MyVoxel,
+    object::{GlobalColor, MyVoxel},
     Vec3Wrapper, CHUNK_SIZE, DISTANCE_THRESHOLD, OCTREE_LENGTH,
 };
 
@@ -66,7 +66,7 @@ pub struct Node {
 }
 
 impl Node {
-    fn new(res: &mut BufferStorage, cmd: vk::CommandBuffer, queue: TKQueue, size: usize, center_pos: glm::Vec3, parent: Option<*mut Node>, scale: f32, depth: usize, player: Vec3, chunk_queue: ChunkQueue) -> Self {
+    fn new(global_data: &GlobalData, res: &mut BufferStorage, cmd: vk::CommandBuffer, queue: TKQueue, size: usize, center_pos: glm::Vec3, parent: Option<*mut Node>, scale: f32, depth: usize, player: Vec3, chunk_queue: ChunkQueue) -> Self {
         let half_size = Vec3::new(size as f32 / 2.0, size as f32 / 2.0, size as f32 / 2.0);
         let offset_position = center_pos - Vec3::new(size as f32 / 2.0, size as f32 / 2.0, size as f32 / 2.0);
         unsafe {
@@ -83,9 +83,9 @@ impl Node {
             };
 
             if depth > 0 && distance_from_cube_to_point(player, center_pos - half_size, center_pos + half_size) < DISTANCE_THRESHOLD {
-                node.split(res, cmd, queue, player);
+                node.split(global_data, res, cmd, queue, player);
             } else {
-                node.mesh = ChunkMesh::new_test(res, queue, offset_position, cmd, depth as u32, node.chunk_queue.clone());
+                node.mesh = ChunkMesh::new_test(global_data, res, queue, offset_position, cmd, depth as u32, node.chunk_queue.clone());
             }
 
             node
@@ -110,18 +110,18 @@ impl Node {
         }
     }
 
-    fn should_split(&mut self, res: &mut BufferStorage, cmd: vk::CommandBuffer, queue: TKQueue, player: Vec3) {
+    fn should_split(&mut self, global_data: &GlobalData, res: &mut BufferStorage, cmd: vk::CommandBuffer, queue: TKQueue, player: Vec3) {
         let offset_position = self.center_pos - Vec3::new(self.size as f32 / 2.0, self.size as f32 / 2.0, self.size as f32 / 2.0);
 
         let half_size = Vec3::new(self.size as f32 / 2.0, self.size as f32 / 2.0, self.size as f32 / 2.0);
         if self.depth > 0 && distance_from_cube_to_point(player, self.center_pos - half_size, self.center_pos + half_size) < DISTANCE_THRESHOLD {
-            self.split(res, cmd, queue, player);
+            self.split(global_data, res, cmd, queue, player);
         } else {
-            self.mesh = ChunkMesh::new_test(res, queue, offset_position, cmd, self.depth as u32, self.chunk_queue.clone());
+            self.mesh = ChunkMesh::new_test(global_data, res, queue, offset_position, cmd, self.depth as u32, self.chunk_queue.clone());
         }
     }
 
-    fn split(&mut self, res: &mut BufferStorage, cmd: vk::CommandBuffer, queue: TKQueue, player: Vec3) {
+    fn split(&mut self, global_data: &GlobalData, res: &mut BufferStorage, cmd: vk::CommandBuffer, queue: TKQueue, player: Vec3) {
         let half_size = self.size as f32 / 2.0;
         let quarter_size = self.size as f32 / 4.0;
         // TOP
@@ -211,6 +211,20 @@ impl Hash for Vec3Wrapper {
 impl Eq for Vec3Wrapper {}
 pub(crate) type ChunkQueue = Arc<Mutex<HashMap<Vec3Wrapper, Vec<MyVoxel>>>>;
 
+pub struct GlobalData {
+    // biomes
+    pub flatland: Flatland,
+    // material
+    pub material: Arc<Mutex<GlobalColor>>,
+}
+impl GlobalData {
+    pub fn new() -> Self {
+        // initialize all material
+        // initialize all biomes?
+        todo!()
+    }
+}
+
 pub struct World {
     root_indices: HashMap<OctreeOffset, usize>,
     /// adds all the voxels from neighbor chunks
@@ -219,10 +233,15 @@ pub struct World {
     roots: Vec<Octree>,
 
     world_seed: u64,
+
+    global_data: GlobalData,
+    // BIOMES
 }
 impl World {
     pub fn new(res: &mut BufferStorage, cmd: vk::CommandBuffer, queue: TKQueue, player: Vec3) -> Self {
         // CREATE BIOMES
+
+        let global_data = GlobalData::new();
 
         let world_seed: u64 = 35151445149;
         let octree_player_in = player / Vec3::new(OCTREE_LENGTH, OCTREE_LENGTH, OCTREE_LENGTH);
@@ -253,10 +272,10 @@ impl World {
         let mut root_indices = HashMap::new();
         for root_pos in &all_octrees_pos {
             root_indices.insert(Vec3Wrapper::new(root_pos), roots.len());
-            roots.push(Octree::new(res, cmd, queue, *root_pos, player, chunk_add_queue.clone()));
+            roots.push(Octree::new(&global_data, res, cmd, queue, *root_pos, player, chunk_add_queue.clone()));
         }
 
-        Self { roots, chunk_add_queue, root_indices, world_seed: 531513 }
+        Self { roots, chunk_add_queue, root_indices, world_seed: 531513, global_data }
     }
     pub fn draw(&mut self, device: &ash::Device, cmd: vk::CommandBuffer, layout: vk::PipelineLayout, cam_index: u32, g_color_index: u32, player: Vec3) {}
 
@@ -269,10 +288,11 @@ pub struct Octree {
 }
 
 impl Octree {
-    pub fn new(res: &mut BufferStorage, cmd: vk::CommandBuffer, queue: TKQueue, octree_offset: Vec3, player: Vec3, add_queue: ChunkQueue) -> Octree {
+    pub fn new(global_data: &GlobalData, res: &mut BufferStorage, cmd: vk::CommandBuffer, queue: TKQueue, octree_offset: Vec3, player: Vec3, add_queue: ChunkQueue) -> Octree {
         let actual_offset = octree_offset * Vec3::new(OCTREE_LENGTH, OCTREE_LENGTH, OCTREE_LENGTH);
         unsafe {
             let root = Node::new(
+                global_data,
                 res,
                 cmd,
                 queue,

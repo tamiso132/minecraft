@@ -4,6 +4,7 @@ mod generation;
 mod mesh;
 pub mod node;
 pub mod object;
+pub mod vkmulti;
 
 const CHUNK_RESOLUTION: usize = 64;
 const DEPTH: usize = 1;
