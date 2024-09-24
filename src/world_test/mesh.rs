@@ -4,8 +4,6 @@ use super::*;
 
 use std::fmt::Debug;
 
-
-
 pub fn mesh(y_axis: &[MatSize]) -> Vec<GPUQuad> {
     let size = size_of::<Gridbits>() * 8;
 

@@ -10,8 +10,7 @@ use super::{
 };
 use layer::{BlockLayer, ChunkParameter, HeightMap, Layer};
 
-
-pub struct Block{
+pub struct Block {
     variations: Vec<u8>,
 }
 
@@ -23,10 +22,9 @@ pub struct AllBiomes {
 impl AllBiomes {
     fn new() -> Self {
         // TODO, read from a file
-        
+
         // LOAD all colors
-        
-        
+
         // let mut flatland_builder = BiomeBuilder::default();
         // {
         //     let temp_range: Range<f32> = super::Range::new(0.0, 20.0);
@@ -126,7 +124,6 @@ impl TBiome for Flatland {
         todo!()
     }
 
-
     fn generate_biome(&self, chunk: &mut Vec<u32>, global_x: i32, global_y: i32, global_z: i32, lod_scale: i32) {
         let chunk_length = CHUNK_RESOLUTION;
         let chunk_parameter = ChunkParameter { global_x, global_y, global_z, lod_scale, chunk };
@@ -160,11 +157,10 @@ impl TBiome for Flatland {
             }
         }
     }
-    
+
     fn load_biome() {
         todo!()
     }
 }
 
 impl BiomeType {}
-
