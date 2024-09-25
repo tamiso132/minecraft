@@ -1,6 +1,5 @@
 use std::{marker::PhantomData, sync::Arc};
 
-use tasc::BlockingTaskHandle;
 pub(crate) mod layer;
 use super::{
     chunk::get_y_offset,
@@ -135,7 +134,7 @@ impl TBiome for Flatland {
         let chunk_param_ref = &chunk_parameter;
 
         for i in 0..self.blocks.len() {
-            block_handler.push(tasc::blocking::scoped(move |_| self.blocks[i].generate((chunk_param_ref, height_ref))));
+            block_handler.push(tasc::sync::scoped(move || self.blocks[i].generate((chunk_param_ref, height_ref))));
         }
 
         // Join all terrain changes

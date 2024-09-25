@@ -2356,9 +2356,9 @@ checksum = "e1fc403891a21bcfb7c37834ba66a547a8f402146eba7265b5a6d88059c9ff2f"
 
 [[package]]
 name = "tasc"
-version = "0.1.3"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c1dda110160ff985cd4ad17e4c4923c84b98dba0ee342d4077a6c33ea1c79da"
+checksum = "cb56fbd660c61c0b833168fd6054c3cd230abd5ee3a81895bccbffe0a9d33aa1"
 dependencies = [
  "crossbeam-channel",
  "num_cpus",
@@ -2584,6 +2584,7 @@ dependencies = [
  "libnoise",
  "log",
  "memoffset",
+ "tasc",
  "ultraviolet",
  "vk-mem",
  "voxelengine-gui",

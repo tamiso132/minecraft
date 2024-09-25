@@ -5,7 +5,6 @@ use std::mem::{ManuallyDrop, MaybeUninit};
 use std::{collections::HashMap, usize};
 
 use dot_vox::{Color, DotVoxData};
-use tasc::BlockingTaskHandle;
 use voxelengine::t_thread::{self, MutPtr, Ptr, ThreadPool};
 use voxelengine::vulkan::resource::BufferIndex;
 
@@ -174,7 +173,7 @@ pub fn multi_thread_init() -> GlobalObjects {
         let dox_ptr = MutPtr::new(dots[i].get());
         let str_ptr = Ptr::new(&model_names[i]);
 
-        handles.push(tasc::blocking::task(|ctx| {
+        handles.push(tasc::sync::task(|| {
             let dox_ptr = dox_ptr;
             let str_ptr = str_ptr;
 

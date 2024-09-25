@@ -6,16 +6,13 @@ use core::panic;
 use env_logger::Builder;
 use glm::Vec3;
 use std::{
-    any::Any,
-    collections::HashMap,
-    mem::transmute,
-    time::{Duration, Instant},
+    any::Any, collections::HashMap, mem::transmute, thread, time::{Duration, Instant}
 };
 
 use tgui::ImguiId;
 use voxelengine::{
     app::ApplicationTrait,
-    core::camera::{Camera, Controls, GPUCamera},
+    core::{asset::AssetLoader, camera::{Camera, Controls, GPUCamera}},
     t_thread::ThreadPool,
     vulkan::{
         builder::{self},
@@ -33,12 +30,12 @@ use winit::{
     window::CursorGrabMode,
 };
 
-use crate::world_test::{
+use crate::{loader::SoundLoader, world_test::{
     self,
     chunk::ChunkMesh,
     node::{Octree, World},
     object::{self, GlobalColor, GlobalObjects, VoxObject},
-};
+}};
 use voxelengine::gui::*;
 
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
@@ -80,8 +77,17 @@ pub struct ImguiVariables {
 
 impl ApplicationTrait for TestApplication {
     fn on_new(event_loop: &EventLoop<()>) -> Self {
-        Builder::new().filter_level(log::LevelFilter::Info).init();
 
+
+        AssetLoader::load_resource::<SoundLoader>("Untitled.mp3");
+
+        let (mut manager, backend) = awedio::start().unwrap();
+        let memory_sound = AssetLoader::get::<SoundLoader>("Untitled.mp3");
+
+        manager.play(Box::new(memory_sound));
+        thread::sleep(Duration::from_secs(10));
+
+        Builder::new().filter_level(log::LevelFilter::Info).init();
         let mut vulkan = VulkanContext::new(&event_loop, MAX_FRAMES_IN_FLIGHT, true);
         //  Octree::new(&mut vulkan.resources.get_buffer_storage(), Vec3::zero());
         let cam = Camera::new(vulkan.window_extent);

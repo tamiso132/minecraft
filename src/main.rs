@@ -30,6 +30,7 @@ extern crate ultraviolet as glm;
 extern crate voxelengine_gui as tgui;
 
 mod test;
+mod loader;
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
 /// There should only be application relevant information in these functions
