@@ -2584,7 +2584,6 @@ dependencies = [
  "libnoise",
  "log",
  "memoffset",
- "tasc",
  "ultraviolet",
  "vk-mem",
  "voxelengine-gui",
