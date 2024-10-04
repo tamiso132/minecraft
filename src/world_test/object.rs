@@ -1,12 +1,10 @@
-use core::panic;
-use std::cell::UnsafeCell;
-use std::hash::Hash;
-use std::mem::{ManuallyDrop, MaybeUninit};
-use std::{collections::HashMap, usize};
 
-use dot_vox::{Color, DotVoxData};
-use voxelengine::t_thread::{self, MutPtr, Ptr, ThreadPool};
-use voxelengine::vulkan::resource::BufferIndex;
+
+use std::cell::UnsafeCell;
+
+use voxelengine::t_thread::*;
+
+use super::*;
 
 pub struct GlobalObjects {
     pub objects: Vec<VoxObject>,
@@ -84,14 +82,14 @@ fn load_model(s: &str, g_colors: &mut GlobalColor) -> VoxObject {
 
 fn load_colors_into_hashmap(g_colors: &mut GlobalColor) {}
 
-fn load(model: &str) -> DotVoxData {
+fn load(model: &str) -> vox::DotVoxData {
     let asset_path = format!("assets/{}", model);
-    dot_vox::load(asset_path.as_str()).unwrap()
+    vox::load(asset_path.as_str()).unwrap()
 }
 
-fn multi_thread_load_color(model: &DotVoxData, global_colors: &mut GlobalColor) {
+fn multi_thread_load_color(model: &vox::DotVoxData, global_colors: &mut GlobalColor) {
     let mut ptr_color = MutPtr::new(global_colors);
-    let mut ptr_model = Ptr::new(model as *const DotVoxData);
+    let mut ptr_model = Ptr::new(model as *const vox::DotVoxData);
     let my_closure = move || {
         ptr_color = ptr_color;
         ptr_model = ptr_model;
@@ -129,7 +127,7 @@ fn join_all_colors(global_colors: &mut Vec<GlobalColor>) -> GlobalColor {
     return real_g;
 }
 
-fn multi_thread_objects(models: &Vec<UnsafeCell<DotVoxData>>, g_colors: &GlobalColor) -> Vec<VoxObject> {
+fn multi_thread_objects(models: &Vec<UnsafeCell<vox::DotVoxData>>, g_colors: &GlobalColor) -> Vec<VoxObject> {
     let mut objects = Vec::with_capacity(models.len());
     for i in 0..models.len() {
         objects.push(VoxObject::default());
@@ -164,7 +162,7 @@ fn multi_thread_objects(models: &Vec<UnsafeCell<DotVoxData>>, g_colors: &GlobalC
 pub fn multi_thread_init() -> GlobalObjects {
     let model_names = ["tree.vox", "chr_knight.vox"];
 
-    let mut dots: Vec<UnsafeCell<DotVoxData>> = Vec::with_capacity(model_names.len());
+    let mut dots: Vec<UnsafeCell<vox::DotVoxData>> = Vec::with_capacity(model_names.len());
     unsafe {
         dots.set_len(model_names.len());
     }
@@ -199,6 +197,6 @@ pub fn multi_thread_init() -> GlobalObjects {
     GlobalObjects { objects, g_colors }
 }
 
-fn convert(external: &Color) -> MyColor {
+fn convert(external: &vox::Color) -> MyColor {
     MyColor { r: external.r, g: external.g, b: external.b, a: external.a }
 }

@@ -8,7 +8,7 @@ use libnoise::{Generator, Simplex, Source};
 
 use crate::world_test::{
     chunk::{get_x_offset, get_y_offset, get_z_offset},
-    generation::NoiseParameters,
+    gen::NoiseParameters,
     MatSize, Range, CHUNK_RESOLUTION,
 };
 

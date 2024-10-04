@@ -1,17 +1,5 @@
-use core::f64;
-use std::{
-    cmp::{max, min},
-    collections::HashMap,
-    usize,
-};
-
-use chunk::{get_x_offset, get_y_offset, get_z_offset};
-use libnoise::{Generator, Source};
-use voxelengine::terrain::Chunk;
-
 use super::*;
 
-const SURFACE_LEVEL: f32 = 0.0;
 
 pub struct NoiseParameters {
     pub amplitude: u32,
@@ -40,13 +28,13 @@ pub(crate) fn generate_basic_terrain(global_x: i32, global_y: i32, global_z: i32
     let generator = Source::simplex(seed as u64).add(1.0).scale(scale);
     let mat_generator = Source::simplex(53159491 as u64).add(1.0).scale([100.0]);
     // when surface begins
-    let min_surface = {
-        if global_y < SURFACE_LEVEL as i32 {
-            (SURFACE_LEVEL as i32 - global_y).abs()
-        } else {
-            0
-        }
-    };
+    // let min_surface = {
+    //     if global_y < SURFACE_LEVEL as i32 {
+    //         (SURFACE_LEVEL as i32 - global_y).abs()
+    //     } else {
+    //         0
+    //     }
+    // };
 
     // for z in 0..chunk_length {
     //     let z_offset = get_z_offset(chunk_length, z as f32);
@@ -87,12 +75,12 @@ pub(crate) fn generate_surface(grid: &Vec<u32>, lod_scale: usize, chunk_resoluti
 
     let highest_point = CHUNK_RESOLUTION as i32 * lod_scale as i32 + global_y;
 
-    if highest_point < SURFACE_LEVEL as i32 {
-        // everything is solid
+    // if highest_point < SURFACE_LEVEL as i32 {
+    //     // everything is solid
 
-        todo!();
-        // return
-    }
+    //     todo!();
+    //     // return
+    // }
 
     if lod_scale > 1 {
         let higher_res_scale = lod_scale as i32 / 2;

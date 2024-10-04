@@ -1,48 +1,44 @@
-use std::{slice::Windows, thread::yield_now, u8};
-
 use super::*;
-
-use std::fmt::Debug;
 
 pub fn mesh(y_axis: &[MatSize]) -> Vec<GPUQuad> {
     let size = size_of::<Gridbits>() * 8;
 
     #[inline]
-    fn insert_voxel_to_axis(x: usize, y: usize, z: usize, block: MatSize, axis_cols: &mut [[Gridbits; CHUNK_SIZE]; CHUNK_SIZE]) {
+    fn insert_voxel_to_axis(x: usize, y: usize, z: usize, block: MatSize, axis_cols: &mut [[Gridbits; CHUNK_RESOLUTION]; CHUNK_RESOLUTION]) {
         axis_cols[z][x] |= (((block != 0) as u128) << y as Gridbits) as Gridbits;
     }
 
     // solid binary for  each axis
     // Starts at lowest point of the chunk
-    let mut axis_cols: [[[Gridbits; CHUNK_SIZE]; CHUNK_SIZE]; 6] = [[[0; CHUNK_SIZE]; CHUNK_SIZE]; 6];
+    let mut axis_cols: [[[Gridbits; CHUNK_RESOLUTION]; CHUNK_RESOLUTION]; 6] = [[[0; CHUNK_RESOLUTION]; CHUNK_RESOLUTION]; 6];
 
     // create_axis(grid);
 
-    for y in 0..CHUNK_SIZE {
-        let y_offset = y * CHUNK_SIZE * CHUNK_SIZE;
-        for z in 0..CHUNK_SIZE {
-            let z_offset = z * CHUNK_SIZE;
-            for x in 0..CHUNK_SIZE {
+    for y in 0..CHUNK_RESOLUTION {
+        let y_offset = y * CHUNK_RESOLUTION * CHUNK_RESOLUTION;
+        for z in 0..CHUNK_RESOLUTION {
+            let z_offset = z * CHUNK_RESOLUTION;
+            for x in 0..CHUNK_RESOLUTION {
                 insert_voxel_to_axis(z, x, y, y_axis[y_offset + z_offset + x], &mut axis_cols[Axis::Right.get_raw() * 2]);
             }
         }
     }
 
-    for y in 0..CHUNK_SIZE {
-        let y_offset = y * CHUNK_SIZE * CHUNK_SIZE;
-        for z in 0..CHUNK_SIZE {
-            let z_offset = z * CHUNK_SIZE;
-            for x in 0..CHUNK_SIZE {
+    for y in 0..CHUNK_RESOLUTION {
+        let y_offset = y * CHUNK_RESOLUTION * CHUNK_RESOLUTION;
+        for z in 0..CHUNK_RESOLUTION {
+            let z_offset = z * CHUNK_RESOLUTION;
+            for x in 0..CHUNK_RESOLUTION {
                 insert_voxel_to_axis(x, y, z, y_axis[y_offset + z_offset + x], &mut axis_cols[Axis::Up.get_raw() * 2]);
             }
         }
     }
 
-    for y in 0..CHUNK_SIZE {
-        let y_offset = y * CHUNK_SIZE * CHUNK_SIZE;
-        for z in 0..CHUNK_SIZE {
-            let z_offset = z * CHUNK_SIZE;
-            for x in 0..CHUNK_SIZE {
+    for y in 0..CHUNK_RESOLUTION {
+        let y_offset = y * CHUNK_RESOLUTION * CHUNK_RESOLUTION;
+        for z in 0..CHUNK_RESOLUTION {
+            let z_offset = z * CHUNK_RESOLUTION;
+            for x in 0..CHUNK_RESOLUTION {
                 let block = (y_axis[y_offset + z_offset + x] & 1) == 1;
                 insert_voxel_to_axis(x, z, y, y_axis[y_offset + z_offset + x], &mut axis_cols[Axis::Front.get_raw() * 2]);
             }

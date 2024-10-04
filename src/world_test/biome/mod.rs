@@ -3,7 +3,7 @@ use std::{marker::PhantomData, sync::Arc};
 pub(crate) mod layer;
 use super::{
     chunk::get_y_offset,
-    generation::NoiseParameters,
+    gen::NoiseParameters,
     object::{MyColor, VoxObject},
     MatSize, Range, CHUNK_RESOLUTION,
 };

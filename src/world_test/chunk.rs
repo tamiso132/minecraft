@@ -1,27 +1,12 @@
-use std::cmp::min;
 
-use ash::vk;
-use glm::Vec3;
-use mesh::GPUQuad;
-use object::GlobalColor;
-use tgui::ImguiId;
-use voxelengine::gui::struct_impl::*;
-use voxelengine::vulkan::util::slice_as_u8;
-use voxelengine::TImguiRender;
-use voxelengine::{
-    terrain::block::GPUBlock,
-    vulkan::{
-        resource::{self, AllocatedBuffer, BufferBuilder, BufferIndex, BufferStorage, BufferType, Memory},
-        util::{self, slice_as_u8_vec},
-        TKQueue,
-    },
-};
-use voxelengine_proc::ImGuiFields;
 
-use super::biome::TBiome;
-use super::generation::NoiseParameters;
-use super::node::{ChunkQueue, GlobalData};
-use super::{biome, mesh, object, MatSize, CHUNK_RESOLUTION, CHUNK_SIZE};
+
+// same crate dependencies
+use biome::*;
+use mesh::*;
+use node::*;
+
+use super::*;
 
 pub(crate) fn get_y_offset(y: usize) -> usize {
     y * CHUNK_RESOLUTION * CHUNK_RESOLUTION
@@ -44,7 +29,7 @@ struct ChunkConstant {
     pub quad_index: u32,
     pub color_index: u32,
     pub world_index: u32,
-    pub chunk_size: u32,
+    pub CHUNK_RESOLUTION: u32,
 }
 
 #[derive(Default, ImGuiFields)]
@@ -84,7 +69,7 @@ impl ChunkMesh {
 
         let buffers = BufferBuilder::new()
             .set_name("")
-            .set_data(slice_as_u8_vec(&quads))
+            .set_data(util::slice_as_u8_vec(&quads))
             .set_is_descriptor(true)
             .set_queue_family(graphic_queue)
             .set_memory(Memory::Local)
@@ -104,7 +89,7 @@ impl ChunkMesh {
                 pos: offset_position,
                 cam_index: 0,
                 color_index: 0,
-                chunk_size: 64,
+                CHUNK_RESOLUTION: 64,
                 quad_index: res.get_buffer_ref(buffers[0]).index as u32,
                 world_index: texture_buffer as u32,
                 scale,
@@ -129,7 +114,7 @@ impl ChunkMesh {
         self.chunk_constant.cam_index = cam_index;
         self.chunk_constant.color_index = g_color_index;
 
-        let slice = slice_as_u8(&self.chunk_constant);
+        let slice = util::slice_as_u8(&self.chunk_constant);
 
         unsafe {
             device.cmd_push_constants(
@@ -137,14 +122,13 @@ impl ChunkMesh {
                 layout,
                 vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::COMPUTE,
                 0,
-                slice_as_u8_vec(slice),
+                util::slice_as_u8_vec(slice),
             )
         };
         unsafe { device.cmd_draw(cmd, 6, self.quad_len as u32, 0, 0) };
     }
 }
 
-const NOISE_PARAMETER: NoiseParameters = NoiseParameters::default();
 
 #[derive(Debug, Default)]
 struct Chunk {
@@ -154,8 +138,7 @@ struct Chunk {
 
 impl Chunk {
     fn new(global_data: &GlobalData, res: &mut BufferStorage, cmd: vk::CommandBuffer, graphic: TKQueue, lod: u32, global_pos: Vec3) -> Self {
-        let mut material = vec![0; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE];
-        let chunk_size = CHUNK_SIZE;
+        let mut material = vec![0; CHUNK_RESOLUTION * CHUNK_RESOLUTION * CHUNK_RESOLUTION];
 
         let lod_scale = 2u32.pow(lod) as i32;
 

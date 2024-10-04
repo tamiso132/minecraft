@@ -1,34 +1,11 @@
-use std::{
-    collections::HashMap,
-    hash::Hash,
-    mem::MaybeUninit,
-    sync::{Arc, Mutex},
-};
+use super::*;
+// same crate dependencies
+use biome::*;
+use chunk::*;
+use object::*;
 
-use ash::vk::{self, CommandBuffer};
-use glm::Vec3;
-use voxelengine::{
-    t_thread::{self, MutPtr, ThreadPool},
-    vulkan::{
-        resource::{BufferIndex, BufferStorage},
-        TKQueue,
-    },
-    TImguiRender,
-};
-use voxelengine_proc::ImGuiFields;
-
-use crate::world_test::{Range, CHUNK_RESOLUTION, DEPTH, VOXEL_SCALE};
-
-use super::{
-    biome::{self, layer::HeightMap, BiomeBuilder, Flatland},
-    chunk::ChunkMesh,
-    generation::NoiseParameters,
-    object::{GlobalColor, MyVoxel},
-    Vec3Wrapper, CHUNK_SIZE, DISTANCE_THRESHOLD, OCTREE_LENGTH,
-};
-
-use voxelengine::gui::struct_impl::*;
-use voxelengine_gui::ImguiId;
+// standard library
+use std::hash::Hash;
 
 fn distance(player: Vec3, center_pos: Vec3) -> f32 {
     let mut dist = 0.0;
@@ -139,7 +116,7 @@ impl Node {
         let back_right_bot_pos = Vec3::new(self.center_pos.x + quarter_size, self.center_pos.y - quarter_size, self.center_pos.z - quarter_size);
 
         let pos = [front_left_pos, back_left_pos, front_right_pos, back_right_pos, front_left_bot_pos, back_left_bot_pos, front_right_bot_pos, back_right_bot_pos];
-        self.nodes = Some([std::ptr::null_mut(); 8]);
+      //  self.nodes = Some([std::ptr::null_mut(); 8]);
         for i in 0..8 {
             self.nodes.as_mut().unwrap()[i] = Box::into_raw(Box::new(Node::raw_new(
                 half_size as usize,
@@ -150,13 +127,14 @@ impl Node {
                 self.chunk_queue.clone(),
             )));
 
-            let ptr = MutPtr::new(self.nodes.as_mut().unwrap()[i]);
+            // let ptr = MutPtr::new(self.nodes.as_mut().unwrap()[i]);
 
-            ThreadPool::execute(|| {
-                let mut ptr = ptr;
+            // ThreadPool::execute(|| {
+            //     let mut ptr = ptr;
 
-                //(*ptr.data).should_split(res, cmd, queue, player)
-            });
+            //     //(*ptr.data).should_split(res, cmd, queue, player)
+            // });
+            todo!();
         }
     }
 
